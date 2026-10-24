@@ -1,0 +1,27 @@
+[project]
+name = "algr"
+version = "0.0.1"
+description = "A flow for Algorithmic Development: rules decide, tasks flow straight through to merge."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "yuta-ito" }]
+requires-python = ">=3.11"
+# コアは依存ゼロ。外部との接点はすべて .algr/ のアダプタに置く。
+dependencies = []
+
+[project.scripts]
+algr = "algr.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 130
