@@ -40,6 +40,7 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
   常駐プロセス（`algr watch`）、エージェントのプロンプトと安全網のルール（`src/algr/prompts/`、`python -m algr.agent`）、指標（`algr stats`）
 - 残り：同期の起票（対話）、GitOps ボードと herdr のアダプタ、既存の作業記録からの初期ルール。決めることは `docs/open-questions.md`
 - 完了条件：実タスクが起票とルールのレビューだけでマージまで流れ、差し戻し率が下がる傾向を `algr stats` で示す
+- algr 自身も algr で開発している。設定とルールは `.algr/`、回し方・次にやること・分かったことは `docs/dogfooding.md`
 
 ## ディレクトリ構成
 ```
