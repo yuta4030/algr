@@ -26,6 +26,9 @@ Hook = Callable[[Event, "Engine"], Any]
 # トリガーが外から送れるイベント。人の操作（起票、回答、やり直し、マージ）と同じ入口を通る
 EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.done")
 
+# エージェントが起票する別件の未決事項から受け取る項目
+QUESTION_FIELDS = ("text", "topic", "options", "recommended")
+
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
 
 
@@ -143,9 +146,13 @@ class Engine:
         questions: list[dict[str, Any]] | None = None,
         source: str = "human",
         priority: int = 0,
+        depends: list[str] | None = None,
     ) -> Task:
         """意図を受け取り、タスクを起票に流す。questions は人が最初から分かっている未決事項。"""
-        task = self.tasks.create(Task(id="", title=title, purpose=purpose, source=source, priority=priority))
+        for dep in depends or []:
+            self.tasks.get(dep)  # 無いタスクには依存できない
+        task = Task(id="", title=title, purpose=purpose, source=source, priority=priority, depends=list(depends or []))
+        task = self.tasks.create(task)
         for q in questions or []:
             task.add_question(**q)
         self.emit("task.created", task, source=source)
@@ -222,9 +229,12 @@ class Engine:
     def dispatch(self) -> list[Task]:
         """ready のタスクを優先度順に、同時実行数の上限まで始める。"""
         started = []
+        states = {t.id: t.state for t in self.tasks.list()}
         for task in sorted(self.tasks.list(State.READY), key=lambda t: -t.priority):
             if len(self.tasks.list(State.IN_PROGRESS)) >= self.max_parallel:
                 break
+            if any(states.get(dep) != State.DONE for dep in task.depends):
+                continue  # 依存先がすべて done になるまで配車しない
             with _retry_next_tick():
                 self.emit("task.started", task)
                 started.append(task)
@@ -278,12 +288,29 @@ class Engine:
         if status.state == RunState.COMPLETED:
             try:
                 result = parse(Role(role), status.result)
+                self._check_depends(getattr(result, "tasks", []))
             except ResultError as e:
-                status.message = f"bad result from {role}: {e}"
+                result, status.message = None, f"bad result from {role}: {e}"
         if result is None:
             self._job_failed(task, Role(role), status.message)
         else:
             self._job_done(task, result)
+            # 別件の起票は、このタスクの保存が通ってから行う。ぶつかって結果を受け取り直しても二重に起票しない
+            for new in getattr(result, "tasks", []):
+                self.create(
+                    new["title"],
+                    purpose=new.get("purpose", ""),
+                    questions=[{k: q[k] for k in QUESTION_FIELDS if k in q} for q in new.get("questions", [])],
+                    source="auto",
+                    priority=new.get("priority", 0),
+                    depends=new.get("depends", []),
+                )
+
+    def _check_depends(self, tasks: list[dict[str, Any]]) -> None:
+        known = {t.id for t in self.tasks.list()}
+        for new in tasks:
+            if unknown := sorted(set(new.get("depends", [])) - known):
+                raise ResultError(f"tasks depend on unknown tasks: {' '.join(unknown)}")
 
     def _job_failed(self, task: Task, role: Role, message: str) -> None:
         if role == Role.DISTILL:
@@ -443,4 +470,7 @@ class Engine:
         self.tasks.comment(task.id, f"merged: {task.pr}")
 
     def _on_task_failed(self, task: Task, event: Event) -> None:
-        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}")
+        # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて人に上げる
+        waiting = [t.id for t in self.tasks.list() if task.id in t.depends and t.state != State.DONE]
+        blocks = f" (blocks {' '.join(waiting)})" if waiting else ""
+        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}{blocks}")

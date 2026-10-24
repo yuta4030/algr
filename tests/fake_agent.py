@@ -9,6 +9,7 @@
 - "slow" を含む：結果を出す前に、ファイル stop ができるまで待つ
 - "flaky" を含む：ファイル flaky-ok ができるまで終了コード 1
 - "fixme" を含む：修正依頼（feedback）を受けてから出した PR は "-fixed" で終わる
+- "spawn" を含む：このタスクに依存する別件を起票して PR を出す。"spawn-bad" は無いタスクに依存させる
 
 レビューの役も、題名で振る舞いを変える。
 - "fixme" を含む：PR が "-fixed" で終わるまで修正を依頼する
@@ -46,6 +47,10 @@ elif job["role"] != "implement":
     write(fake_agent.run(job))
 elif "flaky" in title and not Path("flaky-ok").exists():
     sys.exit(1)
+elif "spawn" in title:
+    depends = ["I99"] if "spawn-bad" in title else [task["id"]]
+    follow = {"title": "follow-up", "questions": [{"text": "Q?", "topic": "f", "extra": 1}], "depends": depends}
+    write({"pr": f"pr/{task['id']}", "decisions": [], "tasks": [follow]})
 elif "fixme" in title and job["input"]["feedback"]:
     assert job["input"]["previous"]["pr"] == f"pr/{task['id']}"  # 前の PR から差分だけ直す
     write({"pr": f"pr/{task['id']}-fixed", "decisions": []})

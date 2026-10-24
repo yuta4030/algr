@@ -11,6 +11,9 @@
 - review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
              objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
 - distill：  {"rules": [{"rule", "source"}]}
+
+intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
+depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ class Fill:
 class IntakeResult:
     fills: list[Fill] = field(default_factory=list)
     questions: list[dict[str, Any]] = field(default_factory=list)
+    tasks: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
 
 
 @dataclass
@@ -44,6 +48,7 @@ class ImplementResult:
     pr: str | None = None
     decisions: list[dict[str, Any]] = field(default_factory=list)
     returned: dict[str, Any] | None = None
+    tasks: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
 
 
 @dataclass
@@ -87,6 +92,18 @@ def _texts(items: Any, *keys: str) -> list[dict[str, Any]]:
     return items
 
 
+def _tasks(data: dict[str, Any]) -> list[dict[str, Any]]:
+    tasks = _texts(data.get("tasks", []), "title")
+    for t in tasks:
+        depends = t.get("depends", [])
+        if not isinstance(depends, list) or not all(isinstance(d, str) for d in depends):
+            raise ResultError("tasks[].depends must be a list of task IDs")
+        if not isinstance(t.get("priority", 0), int):
+            raise ResultError("tasks[].priority must be an integer")
+        _texts(t.get("questions", []), "text")
+    return tasks
+
+
 def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResult | DistillResult:
     if not isinstance(data, dict):
         raise ResultError("result must be an object")
@@ -95,13 +112,14 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
             Fill(f["question_id"], f["answer"], list(f.get("rule_ids", [])))
             for f in _texts(data.get("fills", []), "question_id", "answer")
         ]
-        return IntakeResult(fills, _texts(data.get("questions", []), "text"))
+        return IntakeResult(fills, _texts(data.get("questions", []), "text"), _tasks(data))
     if role == Role.IMPLEMENT:
         if "returned" in data:
             returned = _need(data, "returned", dict)
             _texts([returned], "text")
-            return ImplementResult(returned=returned)
-        return ImplementResult(pr=_need(data, "pr", str), decisions=_texts(data.get("decisions", []), "text", "answer"))
+            return ImplementResult(returned=returned, tasks=_tasks(data))
+        decisions = _texts(data.get("decisions", []), "text", "answer")
+        return ImplementResult(pr=_need(data, "pr", str), decisions=decisions, tasks=_tasks(data))
     if role == Role.REVIEW:
         objections = data.get("objections", {})
         if not isinstance(objections, dict):

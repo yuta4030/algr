@@ -26,6 +26,7 @@ algr run                                           # 走っているジョブが
 algr list --state needs-decision
 algr answer I1 I1-1="OAuth"                        # 答えると起票に戻る
 algr run                                           # 起票 → 実装 → レビュー → マージ
+algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
 ```
@@ -90,6 +91,9 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 - **未決事項**（`questions`）：起票で埋めるもの。ルールで埋まるか、人が答える
 - **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
 
+タスクは `depends` に依存先のタスク ID を持てます。依存先がすべて done になるまで、ready のまま配車しません。
+依存先が failed になったら、待っているタスクは待ち続け、失敗の通知に待っているタスクの ID を添えます（直すのは失敗した方なので）。
+
 タスクの保存は楽観ロックです。`TaskAdapter.save` は読んだときの版（`version`）と保存済みの版が違えば `Conflict` を投げ、
 エンジンはそのタスクを次の tick で読み直してやり直します。
 
@@ -105,6 +109,9 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
 | `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
 | `distill` | 人が答えた未決事項がある時 | `{"rules": [{"rule", "source"}]}` |
+
+`intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
+別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
 
 `objections` は判断への異議で、人に回します。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
 ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、

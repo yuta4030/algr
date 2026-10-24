@@ -72,6 +72,8 @@ def _task_text(task: Task) -> str:
     lines = [f"{task.id} [{status}] {task.title}"]
     if task.purpose:
         lines.append(f"  purpose: {task.purpose}")
+    if task.depends:
+        lines.append(f"  depends: {' '.join(task.depends)}")
     if task.pr:
         lines.append(f"  pr: {task.pr}")
     for q in task.questions:
@@ -116,6 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--purpose", default="")
     p.add_argument("--question", "-q", action="append", default=[], type=_question, help='"topic: text" or "text"')
     p.add_argument("--priority", type=int, default=0)
+    p.add_argument("--depends", action="append", default=[], metavar="TASK_ID", help="wait until this task is done")
     p.add_argument("--source", choices=["human", "auto"], default="human")
 
     p = sub.add_parser("list", help="list tasks")
@@ -165,6 +168,7 @@ def run(args: argparse.Namespace) -> Any:
             questions=args.question,
             source=args.source,
             priority=args.priority,
+            depends=args.depends,
         )
     if args.command == "list":
         return engine.tasks.list(State(args.state) if args.state else None)

@@ -77,6 +77,7 @@ class Task:
     purpose: str = ""
     source: str = "human"  # "human" | "auto"
     priority: int = 0  # 大きいほど先に配車する
+    depends: list[str] = field(default_factory=list)  # 先に done になっている必要があるタスクの ID
     questions: list[Question] = field(default_factory=list)
     decisions: list[Decision] = field(default_factory=list)
     pr: str | None = None

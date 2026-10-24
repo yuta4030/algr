@@ -306,3 +306,36 @@ def test_merge_gate_waits_for_human(engine):
     engine.merge("I1")
     assert state(engine, "I1") == State.DONE
     assert engine.events[-1].data == {"from": "review", "pr": "pr/I1", "merged_by": "human"}
+
+
+def test_dependent_task_waits_until_dependency_is_done(engine, repo):
+    engine.create("first slow")
+    engine.create("second", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS and state(engine, "I2") == State.READY)
+    engine.tick()
+    assert state(engine, "I2") == State.READY  # 同時実行数が空いていても、依存先が done になるまで配車しない
+    (repo / "stop").write_text("", encoding="utf-8")
+    run_until(engine, lambda: state(engine, "I2") == State.DONE)
+    order = [(e.task_id, e.name) for e in engine.events if e.name in ("task.done", "task.started")]
+    assert order.index(("I1", "task.done")) < order.index(("I2", "task.started"))
+
+
+def test_failed_dependency_is_reported_with_its_dependents(engine):
+    engine.create("Will fail")
+    engine.create("after", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert "I1 failed: exit 1 (blocks I2)" in [m["message"] for m in engine.notifier.sent()]
+
+
+def test_agents_can_file_follow_up_tasks(engine):
+    engine.create("spawn")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE and "I2" in [t.id for t in engine.tasks.list()])
+    follow = engine.tasks.get("I2")
+    assert (follow.title, follow.source, follow.depends) == ("follow-up", "auto", ["I1"])
+    assert [(q.text, q.topic) for q in follow.questions] == [("Q?", "f")]
+
+
+def test_follow_up_with_unknown_dependency_fails_the_job(engine):
+    engine.create("spawn-bad")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert "unknown tasks: I99" in engine.notifier.sent()[-1]["message"]
