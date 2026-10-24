@@ -72,7 +72,7 @@ def command(agent: dict[str, Any]) -> list[str]:
 
 def run(job: dict[str, Any], root: Path) -> dict[str, Any]:
     agent = job["input"].get("agent", {})
-    proc = subprocess.run(command(agent), input=build_prompt(job, root), capture_output=True, text=True, cwd=root, check=False)
+    proc = subprocess.run(command(agent), input=build_prompt(job, root), capture_output=True, text=True, encoding="utf-8", cwd=root, check=False)
     if proc.returncode != 0:
         raise AgentError(f"claude exited {proc.returncode}: {proc.stderr.strip()[-500:]}")
     try:

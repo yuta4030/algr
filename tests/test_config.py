@@ -73,7 +73,7 @@ def test_unknown_adapter_option(tmp_path, home):
 def test_context_resolves_relative_paths(tmp_path):
     ctx = Context(root=tmp_path, home=tmp_path / "h")
     assert ctx.path("a/b") == tmp_path / "a" / "b"
-    assert ctx.path("/abs").as_posix() == "/abs"
+    assert ctx.path(str(tmp_path / "abs")) == tmp_path / "abs"
 
 
 def test_hooks_for_unknown_events_are_rejected(tmp_path, home):
