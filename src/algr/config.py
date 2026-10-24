@@ -15,11 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from algr.adapters import KINDS, Context
+from algr.flow import HOOK_POINTS
+from algr.model import Role
 
 CONFIG_FILE = "config.toml"
 
 DEFAULTS: dict[str, Any] = {
-    "flow": {"max_parallel": 1},
+    "flow": {"max_parallel": 1, "max_rework": 2, "merge": "auto"},
     "adapters": {
         "task": {"use": "fake.tasks"},
         "trigger": {"use": "fake.inbox"},
@@ -28,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
         "notify": {"use": "stub"},
     },
     "hooks": {},
+    "agents": {},  # 役ごとの設定（model、max_tokens など）。ジョブの input.agent として実行アダプタに渡す
 }
 
 BUILTIN_ADAPTERS = {
@@ -36,6 +39,7 @@ BUILTIN_ADAPTERS = {
     "fake.process": "algr.adapters.fake:LocalProcess",
     "fake.rules": "algr.adapters.fake:RuleFile",
     "stub": "algr.adapters.fake:StubNotifier",
+    "k2down": "algr.adapters.k2down:K2down",
 }
 
 
@@ -130,8 +134,32 @@ class Config:
         return adapter
 
     def hooks(self) -> dict[str, list[Any]]:
+        """イベント名（または全イベントを受ける "*"）→ hook(event, engine) の並び。"""
+        for event in self.data["hooks"]:
+            if event not in HOOK_POINTS:
+                raise ConfigError(f"hooks: unknown event {event!r} (one of {', '.join(HOOK_POINTS)})")
         return {event: [self.resolve(spec, {}) for spec in specs] for event, specs in self.data["hooks"].items()}
 
     @property
     def max_parallel(self) -> int:
         return int(self.data["flow"]["max_parallel"])
+
+    def agents(self) -> dict[str, dict[str, Any]]:
+        """役 → エージェントの設定。[agents.default] はすべての役に効き、役ごとの設定が上書きする。"""
+        table = self.data["agents"]
+        for role in table:
+            if role != "default" and role not in {str(r) for r in Role}:
+                raise ConfigError(f"agents: unknown role {role!r}")
+        return {str(role): merge(table.get("default", {}), table.get(str(role), {})) for role in Role}
+
+    @property
+    def max_rework(self) -> int:
+        return int(self.data["flow"]["max_rework"])
+
+    @property
+    def merge_gate(self) -> bool:
+        """レビューが通ったあと、マージに人のゲートを置くか。"""
+        value = self.data["flow"]["merge"]
+        if value not in ("auto", "human"):
+            raise ConfigError(f"flow.merge must be 'auto' or 'human', got {value!r}")
+        return value == "human"

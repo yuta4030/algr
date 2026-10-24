@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from algr.adapters import Context, Rule, RunState, RunStatus
+from algr.adapters import Conflict, Context, Rule, RunState, RunStatus
 from algr.model import Event, Job, State, Task
 
 
@@ -60,7 +60,12 @@ class FileTasks:
         return [t for t in tasks if state is None or t.state == state]
 
     def save(self, task: Task) -> None:
-        _write_json(self._path(task.id), task.to_dict())
+        path = self._path(task.id)
+        stored = json.loads(path.read_text(encoding="utf-8")).get("version", 0) if path.exists() else 0
+        if stored != task.version:
+            raise Conflict(f"{task.id} was changed by someone else (version {task.version}, stored {stored})")
+        task.version += 1
+        _write_json(path, task.to_dict())
 
     def comment(self, task_id: str, text: str) -> None:
         _append_jsonl(self.dir / f"{task_id}.comments.jsonl", {"text": text})
@@ -98,6 +103,7 @@ class LocalProcess:
     コマンドには環境変数 ALGR_JOB_ID / ALGR_ROLE / ALGR_JOB_FILE / ALGR_RESULT_FILE が渡る。
     ALGR_JOB_FILE には {"id", "role", "task", "input"} が入っている。
     コマンドは ALGR_RESULT_FILE に役ごとの結果（algr.agents を参照）を JSON で書いて終了する。
+    結果に "usage"（使ったトークン数）を添えると、結果から外して RunStatus.usage で返す。
     algr の起動をまたいでも状態を追えるよう、pid と終了コードはファイルに残す。
     """
 
@@ -165,9 +171,10 @@ class LocalProcess:
         code = int((run / "exit").read_text(encoding="utf-8").strip())
         result_path = run / "result.json"
         result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
+        usage = result.pop("usage", {}) if isinstance(result, dict) else {}
         if code != 0 or not result:
-            return RunStatus(RunState.FAILED, result, message=f"exit {code}")
-        return RunStatus(RunState.COMPLETED, result)
+            return RunStatus(RunState.FAILED, result, message=f"exit {code}", usage=usage)
+        return RunStatus(RunState.COMPLETED, result, usage=usage)
 
     def running(self) -> int:
         if not self.dir.exists():
@@ -258,6 +265,13 @@ class RuleFile:
         data["proposals"].remove(proposal)
         _write_json(self.dir / "rules.json", data)
         return self.add(proposal["rule"])
+
+    def reject_proposal(self, proposal_id: str) -> None:
+        data = self._load()
+        if not any(p["id"] == proposal_id for p in data["proposals"]):
+            raise KeyError(f"no such proposal: {proposal_id}")
+        data["proposals"] = [p for p in data["proposals"] if p["id"] != proposal_id]
+        _write_json(self.dir / "rules.json", data)
 
 
 class StubNotifier:

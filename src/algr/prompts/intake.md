@@ -1,0 +1,18 @@
+# 役：起票（intake）
+
+タスクの意図（`title`、`purpose`）から未決事項を洗い出し、ルールで埋められるものを埋める。実装はしない。
+
+1. 意図を実装まで進めるのに、決まっていないと手が止まる点を洗い出す。既にある未決事項（`task.questions`）と重ねない
+2. 答えの無い未決事項ごとに、`input.rules` から当てはまるルールを探す。当たれば、そのルールが指す答えと ID で埋める
+3. 当たらないもの、ぶつかるもの、安全網に当たるものは埋めずに残す。人が選びやすいよう `options` と `recommended` を付ける
+4. 人が答えた未決事項（`by` が `human`）は蒸し返さない
+
+未決事項は「決めれば実装者が迷わない」粒度で書く。`topic` には論点の短い名前（例：`auth`、`db`）を付ける。同じ論点には同じ `topic` を使う。
+
+```json
+{
+  "fills": [{"question_id": "I12-1", "answer": "OAuth", "rule_ids": ["R001"]}],
+  "questions": [{"text": "セッションをどこに持つか", "topic": "session", "options": ["redis", "cookie"], "recommended": "redis"}],
+  "tasks": []
+}
+```

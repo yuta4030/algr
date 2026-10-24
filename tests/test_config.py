@@ -74,3 +74,9 @@ def test_context_resolves_relative_paths(tmp_path):
     ctx = Context(root=tmp_path, home=tmp_path / "h")
     assert ctx.path("a/b") == tmp_path / "a" / "b"
     assert ctx.path("/abs").as_posix() == "/abs"
+
+
+def test_hooks_for_unknown_events_are_rejected(tmp_path, home):
+    write(tmp_path / ".algr" / "config.toml", '[hooks]\n"task.merged" = ["x.py:f"]\n')
+    with pytest.raises(ConfigError, match="unknown event 'task.merged'"):
+        Config.load(tmp_path).hooks()

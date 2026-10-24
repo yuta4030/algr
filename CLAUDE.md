@@ -20,7 +20,8 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 
 ## 状態とイベント
 - 状態：intake / needs-decision / ready / in-progress / review / done / failed
-- イベントと遷移は `src/algr/flow.py` の `TRANSITIONS`、不変条件は `INVARIANTS`。イベント名を変えるときは README の表も直す
+- イベントと遷移は `src/algr/flow.py` の `TRANSITIONS`、不変条件は `INVARIANTS`、ペイロードの形は `EVENT_DATA`。イベント名やペイロードを変えるときは README の表も直す
+- hook は既定の処理のあとに呼ぶ観察者で、遷移を止めない。hook の失敗でフローを止めない
 - 決断 ID はタスク単位で振る（`I123-1`）。k2down の `--decision` にそのまま渡す
 - 未決事項（`Task.questions`、起票で埋める）と判断（`Task.decisions`、実装エージェントが PR に載せる）は混ぜない
 
@@ -29,15 +30,16 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 - コアはタスクの状態から要るジョブを出して起動し、結果を受け取って状態を動かす。役ごとの結果の形は `src/algr/agents.py`
 - エンジンのハンドラはタスクを読み直してから書き換える。古いタスクのまま保存すると、ほかの処理の変更を消す
 
-## フェーズ0（いま）の範囲
+## フェーズ0（済み）
 - algr 本体の CLI、`.algr/` と `~/.algr/` の設定の読み込み
 - 5 つのアダプタ IF（通知はスタブ）と、フェイクアダプタ（ファイルのタスク、ローカルプロセスの実行、ファイルの判断ストア、inbox トリガー）
-- エージェントは結果の形とフェイク（`src/algr/fake_agent.py`、AI を使わず決まりで判断する）だけ
 - 完了条件：フェイクアダプタでループが一周するテスト（`tests/test_loop.py`）が通る
 
-## フェーズ1で作るもの（まだ作らない）
-- 同期の起票（対話）、k2down の判断ストアアダプタ、GitOps ボードと herdr のアダプタ、ready を監視する常駐プロセス
-- 実装・レビュー・蒸留のエージェントのプロンプトとスキル、安全網のルール
+## フェーズ1（いま）
+- 済み：差し戻し・修正依頼・やり直し・マージのゲート、タスクの依存、楽観ロック、k2down の判断ストアアダプタ、
+  常駐プロセス（`algr watch`）、エージェントのプロンプトと安全網のルール（`src/algr/prompts/`、`python -m algr.agent`）、指標（`algr stats`）
+- 残り：同期の起票（対話）、GitOps ボードと herdr のアダプタ、既存の作業記録からの初期ルール。決めることは `docs/open-questions.md`
+- 完了条件：実タスクが起票とルールのレビューだけでマージまで流れ、差し戻し率が下がる傾向を `algr stats` で示す
 
 ## ディレクトリ構成
 ```
@@ -48,7 +50,10 @@ src/algr/
   flow.py       # 状態遷移と不変条件
   model.py      # Task / Question / Decision / Job / Event
   agents.py     # エージェントの役ごとの入力と結果の形
+  agent.py      # Claude Code でエージェントを走らせるコマンド（python -m algr.agent）
+  prompts/      # 役ごとのプロンプトと安全網のルール（利用側は .algr/prompts/ に追記する）
   fake_agent.py # フェイクのエージェント（python -m algr.fake_agent）
-  adapters/     # アダプタ IF（__init__.py）とフェイク（fake.py）
+  stats.py      # 指標の集計（events.jsonl から）
+  adapters/     # アダプタ IF（__init__.py）、フェイク（fake.py）、k2down（k2down.py）
 tests/
 ```

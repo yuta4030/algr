@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 algr = "algr.cli:main"
+algr-agent = "algr.agent:main"  # 実行アダプタの command に書く（python -m algr.agent と同じ）
 
 [dependency-groups]
 dev = ["pytest>=8"]

@@ -56,3 +56,34 @@ def test_config_shows_sources(algr, repo):
     _, data, _ = algr("config")
     assert data["root"] == str(repo.resolve())
     assert data["config"]["flow"]["max_parallel"] == 2
+
+
+def test_reopen_and_merge(algr):
+    algr("new", "t")
+    assert algr("reopen", "I1")[2] == {"error": "I1 is intake, not failed"}
+    assert algr("merge", "I1")[2] == {"error": "I1 is not approved and waiting for merge"}
+
+
+def test_stats(algr):
+    algr("new", "plain")
+    algr("new", "asks", "-q", "auth: How?")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    algr("answer", "I2", "I2-1=OAuth")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    _, data, _ = algr("stats")
+    s = data["stats"]
+    assert (s["tasks"], s["done"], s["stp_rate"], s["interventions_per_task"]) == (2, 2, 0.5, 0.5)
+    assert (s["return_rate_implement"], s["return_rate_review"]) == (0.0, 0.0)
+    assert s["decision_wait_median_s"] >= 0
+
+
+def test_watch_stops_on_sigterm(repo):
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    proc = subprocess.Popen([sys.executable, "-m", "algr", "-C", str(repo), "watch", "--interval", "0.05"], stdout=subprocess.PIPE, text=True)
+    time.sleep(1.0)
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=10) == 0
