@@ -444,9 +444,8 @@ class Engine:
         if not self.merge_gate:
             self.emit("task.done", task, pr=task.pr, merged_by="auto")
             return
-        task.approved = True
-        self.tasks.save(task)
-        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
+        task.approved = True  # 再起動をまたいで覚えておくための印。人に知らせるのは review.approved
+        self.emit("review.approved", task, pr=task.pr)
 
     def _request_changes(self, task: Task, changes: list[str]) -> None:
         if task.reworks >= self.max_rework:
@@ -505,6 +504,9 @@ class Engine:
 
     def _on_task_submitted(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # レビューエージェント
+
+    def _on_review_approved(self, task: Task, event: Event) -> None:
+        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
 
     def _on_review_escalated(self, task: Task, event: Event) -> None:
         self.notifier.notify(task, f"{task.id} was escalated in review: {' '.join(event.data['questions'])}")

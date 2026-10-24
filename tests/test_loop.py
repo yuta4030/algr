@@ -306,6 +306,8 @@ def test_merge_gate_waits_for_human(engine):
     task = engine.tasks.get("I1")
     assert (task.state, task.jobs) == (State.REVIEW, {})  # 承認済みのあいだはレビューを起動し直さない
     assert engine.notifier.sent()[-1]["message"] == "I1 is approved and waiting for merge: pr/I1"
+    approved = [e for e in engine.events if e.name == "review.approved"]
+    assert [e.data for e in approved] == [{"from": "review", "pr": "pr/I1"}]  # 承認の瞬間に 1 回だけ
     engine.merge("I1")
     assert state(engine, "I1") == State.DONE
     assert engine.events[-1].data == {"from": "review", "pr": "pr/I1", "merged_by": "human"}

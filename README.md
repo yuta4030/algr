@@ -80,6 +80,7 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 | `task.submitted` | `pr` | レビューエージェントを起動する |
 | `review.changes_requested` | `changes`（修正依頼） | 実装エージェントを起動する（前の PR と指摘を渡す） |
 | `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
+| `review.approved` | `pr` | マージのゲート（`flow.merge = "human"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る） |
 | `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録する |
 | `task.failed` | `role`、`message` | 人に上げる |
 | `task.reopened` | `note` | 起票エージェントを起動する |

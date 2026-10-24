@@ -23,6 +23,7 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "task.submitted": (frozenset({S.IN_PROGRESS}), S.REVIEW),
     "review.changes_requested": (frozenset({S.REVIEW}), S.IN_PROGRESS),
     "review.escalated": (frozenset({S.REVIEW}), S.NEEDS_DECISION),
+    "review.approved": (frozenset({S.REVIEW}), S.REVIEW),
     "task.done": (frozenset({S.REVIEW}), S.DONE),
     "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW}), S.FAILED),
     "task.reopened": (frozenset({S.FAILED}), S.INTAKE),
@@ -42,6 +43,7 @@ EVENT_DATA: dict[str, tuple[str, ...]] = {
     "task.submitted": ("pr",),
     "review.changes_requested": ("changes",),
     "review.escalated": ("questions", "reasons"),
+    "review.approved": ("pr",),
     "task.done": ("pr", "merged_by"),
     "task.failed": ("role", "message"),
     "task.reopened": ("note",),
@@ -89,6 +91,7 @@ INVARIANTS: dict[str, tuple[Callable[[Task], str | None], ...]] = {
     "task.submitted": (_has_pr,),
     "review.escalated": (_has_open_questions,),
     "review.changes_requested": (_has_pr,),
+    "review.approved": (_has_pr,),
     "task.done": (_has_pr, _no_open_questions),
 }
 
