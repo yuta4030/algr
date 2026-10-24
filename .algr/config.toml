@@ -1,0 +1,23 @@
+# algr 自身を algr で開発するための設定（ドッグフーディング）。回し方は docs/dogfooding.md。
+# 実行はこのリポジトリの作業ツリーで行うので、実装は 1 件ずつ流す。
+
+[flow]
+max_parallel = 1
+max_rework = 2
+merge = "human"         # レビューが通ったら止まり、人がマージする
+
+[adapters.executor]
+use = "fake.process"
+command = ["algr-agent"]
+max_parallel = 1        # 起票・レビューも同じ作業ツリーで動くので 1 つずつ
+
+[adapters.decisions]
+use = "k2down"          # .algr/decisions/ に rules.json と usage.jsonl ができる
+
+[agents.default]
+max_budget_usd = 2
+args = ["--allowedTools", "Bash(git:*)", "Bash(uv:*)", "Bash(uvx:*)", "Bash(python:*)"]
+
+[agents.implement]
+permission_mode = "acceptEdits"
+max_budget_usd = 5

@@ -1,0 +1,32 @@
+{"ts": "2026-10-24T14:14:10+00:00", "event": "escalated", "decision": "I1-1", "problem": "マージ待ちをどう watch に出すか（watch が通知も標準出力に出す / 承認をイベントにする）", "reason": "no_match"}
+{"ts": "2026-10-24T14:14:10+00:00", "event": "escalated", "decision": "I1-2", "problem": "マージ待ちを出す頻度。承認の瞬間に 1 回だけ出すか、マージされるまで watch のサイクルごとに繰り返すか", "reason": "no_match"}
+{"ts": "2026-10-24T14:14:10+00:00", "event": "escalated", "decision": "I1-3", "problem": "対象の範囲。flow.merge = human のときだけ出すか、ほかの人待ち（needs-decision など）も同じ仕組みで出すか", "reason": "no_match"}
+{"ts": "2026-10-24T14:14:10+00:00", "event": "escalated", "decision": "I1-4", "problem": "watch の標準出力の形式。既存の出力（イベント行、--json の形）を変えてよいか。変える場合は README の表も直す。公開 IF の変更に当たるので人の確認が要る", "reason": "no_match"}
+{"ts": "2026-10-24T14:26:45+00:00", "event": "decided", "decision": "I1-1", "actual": "承認をイベント（review.approved）にする。なるべくシンプルに：イベントで処理できるなら Task.approved というフラグの概念はいらないはず", "outcome": "none"}
+{"ts": "2026-10-24T14:26:46+00:00", "event": "decided", "decision": "I1-2", "actual": "承認時に1回だけ出す", "outcome": "none"}
+{"ts": "2026-10-24T14:26:46+00:00", "event": "decided", "decision": "I1-3", "actual": "flow.merge = human のマージ待ちだけ", "outcome": "none"}
+{"ts": "2026-10-24T14:26:46+00:00", "event": "decided", "decision": "I1-4", "actual": "既存の形は変えず、行や種類を足すだけ。README の表も直す", "outcome": "none"}
+{"ts": "2026-10-24T14:29:21+00:00", "event": "escalated", "decision": "I2-1", "problem": "承認済みの判定は、最後に起きた何のイベントを見て導くか。review.approved を最後の review.* / pr.updated / rework 系のイベントと比べ、承認が最後なら承認済みとするのか、それとも別の定義にするのか", "reason": "no_match"}
+{"ts": "2026-10-24T14:29:21+00:00", "event": "escalated", "decision": "I2-2", "problem": "導出の元になる events.jsonl は、再起動後も欠けずに残ることを前提にしてよいか。ローテーションや切り詰めをする場合、承認済みの判定はどう守るか", "reason": "no_match"}
+{"ts": "2026-10-24T14:29:21+00:00", "event": "escalated", "decision": "I2-3", "problem": "判定をどこに置くか。Engine のメソッド（例：is_approved(task)）にまとめ、engine.py の jobs_for と merge、ui.py、cli.py が同じ関数を通す形でよいか。イベントの読み出しはアダプタ IF（タスク／判断ストア）に足すのか、Engine が直接持つのか", "reason": "no_match"}
+{"ts": "2026-10-24T14:29:21+00:00", "event": "escalated", "decision": "I2-4", "problem": "既存の保存済みタスク（Task.approved を含む JSON）はどう移行するか。読み込み時に approved を無視するだけか、保存形式から approved を消すか。タスクファイルの形式は公開 IF なので、変更は人の承認が要る", "reason": "no_match"}
+{"ts": "2026-10-24T14:29:21+00:00", "event": "escalated", "decision": "I2-5", "problem": "README のイベント表と EVENT_DATA の review.approved のペイロードは変えるか（承認時点の PR 識別子などを足すか）。変えない場合は現状のペイロードだけで導出できるか", "reason": "no_match"}
+{"ts": "2026-10-24T14:55:16+00:00", "event": "decided", "decision": "I2-1", "actual": "イベントからは導かない。承認済みを状態 approved として足す（review.approved で review → approved、task.done で approved → done）。判定は task.state == approved だけ", "outcome": "none"}
+{"ts": "2026-10-24T14:55:16+00:00", "event": "decided", "decision": "I2-2", "actual": "events.jsonl には頼らない。状態はタスクストアに保存されるので、ログの有無や切り詰めに関係しない", "outcome": "none"}
+{"ts": "2026-10-24T14:55:16+00:00", "event": "decided", "decision": "I2-3", "actual": "判定用のメソッドは作らず、state を見る。jobs_for・merge・ui・cli は approved 状態を見るように直す。アダプタ IF は変えない", "outcome": "none"}
+{"ts": "2026-10-24T14:55:16+00:00", "event": "decided", "decision": "I2-4", "actual": "Task.approved を消す。読み込み時は、旧ファイルの approved=true かつ state=review を approved 状態として読み、書き出しでは approved を出さない", "outcome": "none"}
+{"ts": "2026-10-24T14:55:16+00:00", "event": "decided", "decision": "I2-5", "actual": "review.approved のペイロードは変えない。状態一覧が変わるので CLAUDE.md の状態と README の表も直す", "outcome": "none"}
+{"ts": "2026-10-24T14:55:30+00:00", "event": "escalated", "decision": "I2-6", "problem": "approved 状態のタスクに rework（修正依頼）や pr.updated（PR の更新）が起きたとき、どう動かすか。承認後に PR が変わったのに approved のままだと、未レビューの変更がマージされる", "reason": "no_match"}
+{"ts": "2026-10-24T14:56:39+00:00", "event": "decided", "decision": "I2-6", "actual": "rework や pr.updated というイベントは algr に無いので足さない（R002）。approved から出るのは task.done（マージ）と task.failed（人が却下し、reopen でやり直す）だけにする", "outcome": "none"}
+{"ts": "2026-10-24T14:59:01+00:00", "event": "applied", "rule_id": "R002", "problem": "承認済みの持ち方", "decision": "I2-7"}
+{"ts": "2026-10-24T14:59:01+00:00", "event": "applied", "rule_id": "R002", "problem": "approved から出る遷移", "decision": "I2-9"}
+{"ts": "2026-10-24T14:59:01+00:00", "event": "applied", "rule_id": "R001", "problem": "review.approved のペイロードは変えず、行や種類を足すだけにした", "decision": "I2-10"}
+{"ts": "2026-10-24T14:59:49+00:00", "event": "escalated", "decision": "I2-12", "problem": "UI での approved の扱い", "reason": "no_match"}
+{"ts": "2026-10-24T15:02:01+00:00", "event": "decided", "decision": "I2-12", "actual": "そのままでよい。UI は使ってみないとわからないので、細部は人がその都度調整を依頼する", "outcome": "none"}
+{"ts": "2026-10-24T15:02:47+00:00", "event": "applied", "rule_id": "R002", "problem": "承認済みの持ち方", "decision": "I2-13"}
+{"ts": "2026-10-24T15:02:47+00:00", "event": "applied", "rule_id": "R002", "problem": "approved から出る遷移", "decision": "I2-15"}
+{"ts": "2026-10-24T15:02:47+00:00", "event": "applied", "rule_id": "R001", "problem": "review.approved のペイロードは変えず、行や種類を足すだけにした", "decision": "I2-16"}
+{"ts": "2026-10-24T15:18:54+00:00", "event": "replaced", "rule_id": "R004", "replaced_by": "R005"}
+{"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-13", "predicted": "Task.approved をやめ、state に approved を足す。review.approved で review → approved、task.done で approved → done。判定は task.state == approved だけで、events.jsonl には頼らない", "actual": "Task.approved をやめ、state に approved を足す。review.approved で review → approved、task.done で approved → done。判定は task.state == approved だけで、events.jsonl には頼らない", "outcome": "hit"}
+{"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-15", "predicted": "task.done と task.failed だけ。rework / pr.updated のイベントは足さない", "actual": "task.done と task.failed だけ。rework / pr.updated のイベントは足さない", "outcome": "hit"}
+{"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-16", "predicted": "EVENT_DATA は据え置き。README の表の文言は変えず、フロー図の行と状態数（8 つ）を直した", "actual": "EVENT_DATA は据え置き。README の表の文言は変えず、フロー図の行と状態数（8 つ）を直した", "outcome": "hit"}
