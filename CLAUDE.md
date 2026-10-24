@@ -54,6 +54,7 @@ src/algr/
   prompts/      # 役ごとのプロンプトと安全網のルール（利用側は .algr/prompts/ に追記する）
   fake_agent.py # フェイクのエージェント（python -m algr.fake_agent）
   stats.py      # 指標の集計（events.jsonl から）
+  ui.py         # 現状を見る GUI（algr ui）。HTML は ui.html。判断も状態も持たず、操作は Engine のメソッドだけを通す
   adapters/     # アダプタ IF（__init__.py）、フェイク（fake.py）、k2down（k2down.py）
 tests/
 ```

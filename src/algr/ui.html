@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>algr</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #fff; --line: #e4e3dd; --ink: #1d1d1b; --mute: #8a8981;
+  --agent: #3d6fd8; --human: #d9822b; --queue: #b5b3aa; --ok: #2f9e6a; --bad: #d1453b;
+  --track: #ecebe5;
+  /* 系列の色（固定の順で使う）と、系列が 1 つのときの中立色 */
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s0: #52514e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --panel: #1e1e1c; --line: #2e2e2b; --ink: #ecebe5; --mute: #8a8981;
+    --agent: #6f97ef; --human: #eda055; --queue: #5c5b56; --ok: #4cbf89; --bad: #ef6a5f; --track: #2a2a27;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s0: #c3c2b7;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mute { color: var(--mute); }
+header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+.counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.count { display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; background: var(--track); font-size: 12px; }
+.count b { font-weight: 600; }
+.updated { margin-left: auto; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.live { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+main { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); gap: 20px; padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+section > h2 { font-size: 12px; font-weight: 600; color: var(--mute); margin: 0 0 10px; letter-spacing: .06em; display: flex; gap: 8px; align-items: center; }
+h2 .n { background: var(--track); color: var(--ink); border-radius: 99px; padding: 0 7px; }
+
+/* あなたの番 */
+.turns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.turn { border: 1px solid var(--line); border-left: 3px solid var(--human); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.turn.failed { border-left-color: var(--bad); }
+.turn .top { display: flex; gap: 8px; align-items: baseline; }
+.turn .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn .q { font-size: 12px; color: var(--mute); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.btn { align-self: flex-start; font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--track); color: var(--mute); cursor: not-allowed; }
+.clear { display: flex; align-items: center; gap: 10px; color: var(--ok); font-weight: 600; padding: 6px 0; }
+.clear .mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ok); display: grid; place-items: center; font-size: 12px; }
+
+/* 進捗 */
+.rows { display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(180px, 1.3fr) 72px 48px; gap: 12px; align-items: center; padding: 9px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+.row:hover { background: var(--bg); }
+.row.head { cursor: default; border-top: 0; padding-top: 0; font-size: 11px; color: var(--mute); }
+.row.head:hover { background: none; }
+.row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badges { display: inline-flex; gap: 4px; margin-left: 6px; }
+.badge { font-size: 11px; color: var(--mute); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.steps.labels span { font-size: 10px; text-align: center; color: var(--mute); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.step { height: 8px; border-radius: 2px; background: var(--track); }
+.step.past { background: color-mix(in srgb, var(--ok) 55%, var(--track)); }
+.step.now { background: var(--queue); }
+.step.now.agent { background: var(--agent); animation: pulse 1.6s ease-in-out infinite; }
+.step.now.human { background: var(--human); }
+.step.now.deps { background: repeating-linear-gradient(45deg, var(--queue) 0 4px, var(--track) 4px 8px); }
+.step.now.bad { background: var(--bad); }
+.step.now.done, .step.done { background: var(--ok); }
+@keyframes pulse { 50% { opacity: .45; } }
+.who { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--queue); }
+.dot.agent { background: var(--agent); } .dot.human { background: var(--human); } .dot.bad { background: var(--bad); } .dot.done { background: var(--ok); }
+.age { font-size: 12px; color: var(--mute); text-align: right; }
+details.done-list summary { cursor: pointer; font-size: 12px; color: var(--mute); padding: 8px 4px 0; list-style: none; }
+details.done-list summary::before { content: "▸ "; } details.done-list[open] summary::before { content: "▾ "; }
+.empty { color: var(--mute); font-size: 12px; padding: 8px 4px; }
+
+/* 指標 */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: var(--bg); border-radius: 8px; padding: 10px; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .k { font-size: 11px; color: var(--mute); }
+.tile.pair { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.feed { list-style: none; margin: 0; padding: 0; font-size: 12px; max-height: 340px; overflow: auto; }
+.feed li { display: grid; grid-template-columns: 42px 30px 1fr; gap: 6px; padding: 3px 0; cursor: pointer; }
+.feed .ev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.list li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
+.list li .btn { margin-left: auto; padding: 0 8px; }
+
+/* 詳細 */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .25); z-index: 5; display: none; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--panel); border-left: 1px solid var(--line); z-index: 6; overflow: auto; padding: 18px 20px; transform: translateX(100%); transition: transform .18s; }
+.open .scrim { display: block; } .open .drawer { transform: none; }
+.drawer h3 { margin: 4px 0 12px; font-size: 18px; }
+.drawer h4 { font-size: 11px; color: var(--mute); letter-spacing: .06em; margin: 18px 0 6px; font-weight: 600; }
+.close { float: right; font: inherit; background: none; border: 0; color: var(--mute); cursor: pointer; font-size: 18px; }
+.kv { display: grid; grid-template-columns: 72px 1fr; gap: 4px 10px; font-size: 13px; }
+.item { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+.item .a { font-weight: 600; }
+.ground { font-size: 11px; border-radius: 4px; padding: 0 5px; align-self: start; white-space: nowrap; }
+.ground.rule { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.ground.human { background: color-mix(in srgb, var(--human) 18%, transparent); color: var(--human); }
+.ground.agent { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.ground.open { background: var(--human); color: #fff; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--line); font-size: 12px; }
+.timeline li { position: relative; padding: 3px 0 3px 8px; display: flex; gap: 8px; }
+.timeline li::before { content: ""; position: absolute; left: -18px; top: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--queue); }
+.timeline li.human::before { background: var(--human); } .timeline li.bad::before { background: var(--bad); } .timeline li.ok::before { background: var(--ok); }
+.cli { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.cli code { flex: 1; background: var(--bg); padding: 6px 8px; border-radius: 6px; font-size: 12px; overflow: auto; white-space: nowrap; }
+.cli .btn.copy { cursor: pointer; color: var(--ink); }
+.fail { color: var(--bad); font-size: 13px; }
+
+/* ページの切り替え */
+nav { display: flex; gap: 2px; background: var(--track); border-radius: 8px; padding: 2px; }
+nav a { color: var(--mute); text-decoration: none; font-size: 12px; padding: 3px 10px; border-radius: 6px; }
+nav a.on { background: var(--panel); color: var(--ink); font-weight: 600; }
+.view[hidden] { display: none; }
+main.page { display: block; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.grid2 > section { margin-bottom: 0; }
+#tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); display: none; white-space: nowrap; }
+#tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
+/* 推移 */
+.chart { position: relative; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid line { stroke: var(--line); }
+.chart .axis text, .chart .lbl { fill: var(--mute); font-size: 10px; }
+.chart .ln { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.chart .pt { stroke: var(--panel); stroke-width: 2; }
+.chart .cross { stroke: var(--mute); stroke-dasharray: 2 3; display: none; }
+.legend { display: flex; gap: 12px; font-size: 11px; color: var(--mute); margin: -4px 0 6px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+/* ルール */
+.rrow { display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.rrow.unused { color: var(--mute); }
+.use { display: flex; align-items: center; gap: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.use .bar { height: 6px; border-radius: 0 3px 3px 0; background: var(--ok); min-width: 2px; }
+.prop { border: 1px solid var(--line); border-left: 3px solid var(--human); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; }
+.prop .src { font-size: 12px; color: var(--mute); margin: 4px 0 8px; }
+.cand { display: grid; grid-template-columns: 80px minmax(0, 1fr) 70px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.stack { display: flex; gap: 2px; height: 8px; }
+.stack i { border-radius: 2px; }
+
+/* フロー */
+.flow svg { width: 100%; height: auto; display: block; }
+.flow .node rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.flow .node.human rect { stroke: var(--human); } .flow .node.done rect { stroke: var(--ok); } .flow .node.failed rect { stroke: var(--bad); }
+.flow .node .name { font-size: 12px; fill: var(--mute); }
+.flow .node .now { font-size: 20px; font-weight: 600; fill: var(--ink); }
+.flow .node .stay { font-size: 10px; fill: var(--mute); }
+.flow .edge { fill: none; stroke: var(--s0); opacity: .55; }
+.flow .edge.human { stroke: var(--human); opacity: .8; } .flow .edge.bad { stroke: var(--bad); opacity: .8; }
+.flow .edge.zero { stroke-dasharray: 3 4; opacity: .3; }
+.flow .edge:hover { opacity: 1; }
+.flow .elbl rect { fill: var(--panel); } .flow .elbl text { font-size: 11px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ジョブ */
+.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.seg { display: flex; gap: 2px; background: var(--track); border-radius: 8px; padding: 2px; }
+.seg button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--mute); padding: 3px 10px; border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--panel); color: var(--ink); font-weight: 600; }
+.jrow { display: grid; grid-template-columns: 44px minmax(0, 180px) minmax(0, 1fr) 130px 52px; gap: 10px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.jrow.head { border-top: 0; font-size: 10px; color: var(--mute); }
+.jrow .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { position: relative; height: 14px; background: var(--bg); border-radius: 3px; }
+.track i { position: absolute; top: 2px; bottom: 2px; min-width: 3px; border-radius: 2px; }
+.track b { position: absolute; top: 6px; height: 2px; background: var(--line); }
+.track i.running { animation: pulse 1.6s ease-in-out infinite; }
+.ticks { position: relative; height: 12px; }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+/* 狭い画面：行を 2 段にする */
+@media (max-width: 860px) {
+  main { grid-template-columns: minmax(0, 1fr); padding: 16px; } header { padding: 12px 16px; flex-wrap: wrap; }
+  .row { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "id title age" ". steps who"; row-gap: 6px; }
+  .row > .id { grid-area: id; } .row > .title { grid-area: title; } .row > .steps { grid-area: steps; } .row > .who { grid-area: who; } .row > .age { grid-area: age; }
+  .row.head { display: none; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .jrow { grid-template-columns: 30px minmax(0, 1fr) 70px; }
+  .jrow > .title, .jrow > .busy { display: none; }
+  .counts { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>algr</h1>
+  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a></nav>
+  <div class="counts" id="counts"></div>
+  <div class="updated mute"><span class="live" id="live"></span><span id="updated"></span></div>
+</header>
+<main class="view" id="view-now">
+  <div>
+    <section><h2>あなたの番 <span class="n" id="turn-n">0</span></h2><div id="turns"></div></section>
+    <section><h2>進捗 <span class="n" id="active-n">0</span></h2><div class="rows" id="rows"></div></section>
+  </div>
+  <div>
+    <section><h2>指標</h2><div class="tiles" id="tiles"></div></section>
+    <section><h2>最近の動き</h2><ul class="feed" id="feed"></ul></section>
+    <section><h2>ルール <span class="n" id="rule-n">0</span></h2><ul class="list" id="rules"></ul></section>
+  </div>
+</main>
+<main class="view page" id="view-trend" hidden><div class="grid2" id="trend"></div></main>
+<main class="view page" id="view-rules" hidden>
+  <div class="grid2">
+    <section><h2>ルール <span class="n" id="r-n">0</span></h2><div id="r-rules"></div></section>
+    <div>
+      <section><h2>提案 <span class="n" id="r-pn">0</span></h2><div id="r-props"></div></section>
+      <section><h2>まだルールでない判断</h2><div id="r-cands"></div></section>
+    </div>
+  </div>
+</main>
+<main class="view page" id="view-flow" hidden><section class="flow"><h2>遷移の回数と滞在時間（中央値）</h2><div id="flow"></div></section></main>
+<main class="view page" id="view-jobs" hidden><section><div class="filters"><div class="seg" id="j-range"></div><div class="legend" id="j-legend" style="margin:0"></div></div><div id="jobs"></div></section></main>
+<div id="tip"></div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer"></aside>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ROLE = { intake: "起票", implement: "実装", review: "レビュー", distill: "蒸留" };
+const ACTION = { answer: "回答する", reopen: "やり直す", merge: "マージする" };
+let data = null, openId = null;
+
+function ago(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, (Date.parse(data.now) - Date.parse(ts)) / 1000);
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+// いま誰の手にあるか：色の名前と短い言葉
+function who(t) {
+  const p = t.progress;
+  if (t.state === "failed") return ["bad", "失敗"];
+  if (t.state === "done") return ["done", "完了"];
+  if (p.waiting === "human") return ["human", "あなた"];
+  if (p.waiting === "agent") return ["agent", p.roles.filter((r) => r !== "distill").map((r) => ROLE[r]).join("・")];
+  if (p.waiting === "deps") return ["deps", p.blocked_by.join(" ")];
+  return ["queue", "待ち"];
+}
+
+function steps(t) {
+  const stages = data.flow.stages, at = stages.indexOf(t.progress.stage);
+  const [kind] = who(t);
+  return stages.map((s, i) => {
+    let c = "step";
+    if (t.state === "done") c += " done";
+    else if (i < at) c += " past";
+    else if (i === at) c += " now " + kind;
+    return `<i class="${c}" title="${s}"></i>`;
+  }).join("");
+}
+
+function badges(t) {
+  const p = t.progress, b = [];
+  if (p.asked) b.push(`<span class="badge" title="人に聞いた回数">? ${p.asked}</span>`);
+  if (p.returned) b.push(`<span class="badge" title="実装からの差し戻し">↩ ${p.returned}</span>`);
+  if (p.changes) b.push(`<span class="badge" title="修正依頼">✎ ${p.changes}</span>`);
+  return b.length ? `<span class="badges">${b.join("")}</span>` : "";
+}
+
+function row(t) {
+  const [kind, label] = who(t);
+  return `<div class="row" data-id="${t.id}">
+    <span class="id mono mute">${t.id}</span>
+    <span class="title">${esc(t.title)}${badges(t)}</span>
+    <span class="steps">${steps(t)}</span>
+    <span class="who"><i class="dot ${kind}"></i>${esc(label)}</span>
+    <span class="age" title="この状態になってから">${ago(t.progress.since)}</span>
+  </div>`;
+}
+
+function render() {
+  const tasks = data.tasks, by = (s) => tasks.filter((t) => t.state === s);
+  $("counts").innerHTML = data.flow.states.map((s) => `<span class="count">${s} <b>${by(s).length}</b></span>`).join("");
+  $("updated").textContent = clock(data.now);
+
+  // あなたの番
+  const turns = tasks.filter((t) => t.actions.length);
+  $("turn-n").textContent = turns.length;
+  $("turns").innerHTML = turns.length ? `<div class="turns">${turns.map((t) => {
+    const line = t.state === "failed" ? t.progress.failure?.message : t.state === "review" ? t.pr : t.questions.filter((q) => q.answer === null).map((q) => q.text).join(" / ");
+    return `<div class="turn ${t.state === "failed" ? "failed" : ""}" data-id="${t.id}">
+      <div class="top"><span class="mono mute">${t.id}</span><span class="title">${esc(t.title)}</span></div>
+      <div class="q">${esc(line)}</div>
+      <button class="btn" disabled title="GUI からの操作はまだ有効にしていません">${ACTION[t.actions[0].name]}</button>
+    </div>`;
+  }).join("")}</div>` : `<div class="clear"><span class="mark">✓</span>なし</div>`;
+
+  // 進捗
+  const order = { human: 0, agent: 1, deps: 2, queue: 3 };
+  const active = tasks.filter((t) => t.state !== "done").sort((a, b) =>
+    (a.state === "failed") - (b.state === "failed") || order[a.progress.waiting] - order[b.progress.waiting] ||
+    data.flow.stages.indexOf(b.progress.stage) - data.flow.stages.indexOf(a.progress.stage));
+  const done = by("done").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
+  $("active-n").textContent = active.length;
+  const head = `<div class="row head"><span></span><span></span><span class="steps labels">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</span><span></span><span></span></div>`;
+  $("rows").innerHTML = head + (active.length ? active.map(row).join("") : `<div class="empty">動いているタスクはありません</div>`) +
+    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done ${done.length}</summary>${done.map(row).join("")}</details>` : "");
+
+  // 指標：差し戻し率は人の介入と必ず並べる
+  const st = data.stats, pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`), num = (v) => (v === null || v === undefined ? "–" : v);
+  $("tiles").innerHTML = `
+    <div class="tile"><div class="v">${pct(st.stp_rate)}</div><div class="k">STP</div></div>
+    <div class="tile"><div class="v">${num(st.done)}<span class="mute" style="font-size:14px"> / ${num(st.tasks)}</span></div><div class="k">done / 全体</div></div>
+    <div class="tile pair">
+      <div><div class="v">${pct(st.return_rate_implement)}</div><div class="k">差し戻し・実装</div></div>
+      <div><div class="v">${pct(st.return_rate_review)}</div><div class="k">差し戻し・レビュー</div></div>
+      <div><div class="v">${num(st.interventions_per_task)}</div><div class="k">介入 / 件</div></div>
+    </div>
+    <div class="tile"><div class="v">${pct(st.rework_rate)}</div><div class="k">修正依頼</div></div>
+    <div class="tile"><div class="v">${st.tokens_per_task ? Math.round(st.tokens_per_task).toLocaleString() : "–"}</div><div class="k">トークン / 件</div></div>`;
+
+  $("feed").innerHTML = data.events.slice().reverse().slice(0, 30).map((e) =>
+    `<li data-id="${e.task_id}"><span class="mute">${clock(e.ts)}</span><span class="mono mute">${e.task_id}</span><span class="ev mono">${e.name}</span></li>`).join("") || `<li class="mute">–</li>`;
+
+  $("rule-n").textContent = data.rules.length;
+  $("rules").innerHTML = data.proposals.map((p) =>
+    `<li><span class="ground human">提案</span><span>${esc(p.rule)}</span><button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button></li>`).join("") +
+    data.rules.map((r) => `<li><span class="mono mute">${r.id}</span><span>${esc(r.text)}</span></li>`).join("");
+
+  if (openId) detail(openId);
+}
+
+function ground(rule_ids, by) {
+  if (rule_ids && rule_ids.length) return `<span class="ground rule mono">${rule_ids.join(" ")}</span>`;
+  if (by === "human") return `<span class="ground human">人</span>`;
+  return `<span class="ground agent">根拠なし</span>`;
+}
+
+function detail(id) {
+  const t = data.tasks.find((x) => x.id === id);
+  if (!t) return close();
+  openId = id;
+  const [kind, label] = who(t);
+  const qs = t.questions.map((q) => `<div class="item"><span class="mono mute">${q.id}</span><span>${esc(q.text)}${q.answer !== null ? `<br><span class="a">${esc(q.answer)}</span>` : q.recommended ? `<br><span class="mute">推奨 ${esc(q.recommended)}</span>` : ""}</span>${q.answer === null ? `<span class="ground open">未決</span>` : ground(q.rule_ids, q.by)}</div>`).join("");
+  const ds = t.decisions.map((d) => `<div class="item"><span class="mono mute">${d.id}</span><span>${esc(d.text)}<br><span class="a">${esc(d.answer)}</span></span>${ground(d.rule_ids, "agent")}</div>`).join("");
+  const tone = (n) => (["decision.requested", "review.escalated", "decision.resolved", "task.reopened"].includes(n) ? "human" : n === "task.failed" ? "bad" : n === "task.done" ? "ok" : "");
+  const usage = Object.values(t.usage || {}).reduce((a, b) => a + b, 0);
+  $("drawer").innerHTML = `
+    <button class="close" id="close" aria-label="閉じる">×</button>
+    <span class="mono mute">${t.id}</span>
+    <h3>${esc(t.title)}</h3>
+    <div class="steps" style="margin-bottom:4px">${steps(t)}</div>
+    <div class="steps labels" style="margin-bottom:12px">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</div>
+    <div class="kv">
+      <span class="mute">いま</span><span class="who"><i class="dot ${kind}"></i>${esc(label)} <span class="mute">· ${ago(t.progress.since)}</span></span>
+      ${t.purpose ? `<span class="mute">目的</span><span>${esc(t.purpose)}</span>` : ""}
+      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.approved ? " ✓" : ""}</span>` : ""}
+      ${t.depends.length ? `<span class="mute">依存</span><span class="mono">${t.depends.join(" ")}</span>` : ""}
+      ${usage ? `<span class="mute">トークン</span><span>${usage.toLocaleString()}</span>` : ""}
+    </div>
+    ${t.progress.failure ? `<h4>失敗</h4><div class="fail">${ROLE[t.progress.failure.role] || ""} · ${esc(t.progress.failure.message)}</div>` : ""}
+    ${t.actions.map((a) => `<h4>あなたの番</h4><button class="btn" disabled title="GUI からの操作はまだ有効にしていません">${ACTION[a.name]}</button>
+      <div class="cli"><code class="mono">${esc(a.cli)}</code><button class="btn copy" data-cli="${esc(a.cli)}">copy</button></div>`).join("")}
+    ${qs ? `<h4>未決事項</h4>${qs}` : ""}
+    ${ds ? `<h4>判断</h4>${ds}` : ""}
+    ${t.feedback.length ? `<h4>修正依頼</h4>${t.feedback.map((f) => `<div class="item"><span>✎</span><span>${esc(f)}</span><span></span></div>`).join("")}` : ""}
+    <h4>経過</h4>
+    <ul class="timeline">${t.events.map((e) => `<li class="${tone(e.name)}"><span class="mute">${clock(e.ts)}</span><span class="mono">${e.name}</span></li>`).join("")}</ul>`;
+  document.body.classList.add("open");
+}
+function close() { openId = null; document.body.classList.remove("open"); }
+
+document.addEventListener("click", (ev) => {
+  const copy = ev.target.closest(".copy");
+  if (copy) { navigator.clipboard?.writeText(copy.dataset.cli); copy.textContent = "✓"; return; }
+  if (ev.target.closest("#close") || ev.target.id === "scrim") return close();
+  const hit = ev.target.closest("[data-id]");
+  if (hit && !ev.target.closest(".drawer")) detail(hit.dataset.id);
+});
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
+
+async function load() {
+  try {
+    const res = await fetch("/api/snapshot", { cache: "no-store" });
+    data = await res.json();
+    $("live").style.background = "var(--ok)";
+    render();
+  } catch {
+    $("live").style.background = "var(--bad)";
+  }
+}
+// --- サブページ ------------------------------------------------------------
+let hist = null, view = "now", range = "7d";
+const ROLE_COLOR = { implement: "var(--s1)", review: "var(--s2)", intake: "var(--s3)", distill: "var(--s4)" };
+const charts = new Map();
+const tip = (html, ev) => {
+  const el = $("tip");
+  if (!html) { el.style.display = "none"; return; }
+  el.innerHTML = html; el.style.display = "block";
+  const x = Math.min(ev.clientX + 14, innerWidth - el.offsetWidth - 8);
+  el.style.left = `${x}px`; el.style.top = `${ev.clientY + 14}px`;
+};
+const sw = (c) => `<span class="sw" style="background:${c}"></span>`;
+const dur = (s) => (s === null || s === undefined ? "–" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${(s / 3600).toFixed(1)}h` : `${(s / 86400).toFixed(1)}d`);
+const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
+// 折れ線。系列が 2 つ以上なら凡例と線の端のラベルを付ける。軸は 1 本だけ
+function lineChart(id, { labels, series, fmt, max }) {
+  const W = 480, H = 170, L = 34, R = series.length > 1 ? 64 : 12, T = 8, B = 22;
+  const vals = series.flatMap((s) => s.values).filter((v) => v !== null);
+  const top = max ?? Math.max(1e-9, ...vals) * 1.15;
+  const x = (i) => L + (labels.length < 2 ? (W - L - R) / 2 : (i * (W - L - R)) / (labels.length - 1));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const every = Math.ceil(labels.length / 8);
+  let svg = `<g class="grid">${[0, 0.5, 1].map((f) => `<line x1="${L}" x2="${W - R}" y1="${y(top * f)}" y2="${y(top * f)}"/>`).join("")}</g>`;
+  svg += `<g class="axis">${[0, 0.5, 1].map((f) => `<text x="${L - 6}" y="${y(top * f) + 3}" text-anchor="end">${fmt(top * f)}</text>`).join("")}`;
+  svg += labels.map((l, i) => (i % every ? "" : `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${l}</text>`)).join("") + "</g>";
+  const ends = series.map((s) => s.values.map((v, i) => [v, i]).filter(([v]) => v !== null).pop()).map((e, k) => e && { k, i: e[1], y: y(e[0]) + 3 }).filter(Boolean).sort((a, b) => b.y - a.y);
+  ends.forEach((e, n) => { if (n && ends[n - 1].y - e.y < 12) e.y = ends[n - 1].y - 12; });  // 下から順に上へ押し上げる
+  if (series.length > 1) svg += ends.map((e) => `<text class="lbl" x="${x(e.i) + 8}" y="${e.y}">${series[e.k].name}</text>`).join("");
+  for (const s of series) {
+    let d = "", pen = false;
+    s.values.forEach((v, i) => { if (v === null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i)},${y(v)}`; pen = true; });
+    svg += `<path class="ln" d="${d}" style="stroke:${s.color}"/>`;
+    svg += s.values.map((v, i) => (v === null ? "" : `<circle class="pt" cx="${x(i)}" cy="${y(v)}" r="4" style="fill:${s.color}"/>`)).join("");
+  }
+  svg += `<line class="cross" y1="${T}" y2="${H - B}"/>`;
+  charts.set(id, { labels, series, fmt, x, L, R, W });
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("")}</div>` : "";
+  return `${legend}<div class="chart" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div>`;
+}
+
+document.addEventListener("mousemove", (ev) => {
+  const box = ev.target.closest?.(".chart");
+  const bar = ev.target.closest?.("[data-tip]");
+  if (bar) return tip(bar.dataset.tip, ev);
+  if (!box) { tip(null); document.querySelectorAll(".cross").forEach((c) => (c.style.display = "none")); return; }
+  const c = charts.get(box.dataset.chart), svg = box.querySelector("svg"), r = svg.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * c.W;
+  let i = 0;
+  c.labels.forEach((_, k) => { if (Math.abs(c.x(k) - px) < Math.abs(c.x(i) - px)) i = k; });
+  const cross = svg.querySelector(".cross");
+  cross.setAttribute("x1", c.x(i)); cross.setAttribute("x2", c.x(i)); cross.style.display = "block";
+  tip(`<b>${c.labels[i]}〜</b> <span class="mute">${c.extra?.[i] ?? ""}</span><br>` + c.series.map((s) => `${sw(s.color)}${s.name} <b>${s.values[i] === null ? "–" : c.fmt(s.values[i])}</b>`).join("<br>"), ev);
+});
+
+function renderTrend() {
+  const b = hist.trend.buckets, labels = b.map((x) => md(x.start)), col = (k) => b.map((x) => x[k] ?? null);
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const charts_ = [
+    ["差し戻し・修正依頼", "t1", { labels, fmt: pct, max: 1, series: [
+      { name: "実装", color: "var(--s1)", values: col("return_rate_implement") },
+      { name: "レビュー", color: "var(--s2)", values: col("return_rate_review") },
+      { name: "修正依頼", color: "var(--s3)", values: col("rework_rate") }] }],
+    ["人の介入 / 件", "t2", { labels, fmt: (v) => v.toFixed(1), series: [{ name: "介入 / 件", color: "var(--s0)", values: col("interventions_per_task") }] }],
+    ["STP 率", "t3", { labels, fmt: pct, max: 1, series: [{ name: "STP", color: "var(--s0)", values: col("stp_rate") }] }],
+    ["判断待ち（中央値）", "t4", { labels, fmt: (v) => dur(v), series: [{ name: "判断待ち", color: "var(--s0)", values: col("decision_wait_median_s") }] }],
+    ["トークン / 件", "t5", { labels, fmt: (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)), series: [{ name: "トークン", color: "var(--s0)", values: col("tokens_per_task") }] }],
+    ["起票数", "t6", { labels, fmt: (v) => Math.round(v), series: [{ name: "起票", color: "var(--s0)", values: col("tasks") }] }],
+  ];
+  $("trend").innerHTML = b.length ? charts_.map(([title, id, o]) => `<section><h2>${title}</h2>${lineChart(id, o)}</section>`).join("") : `<section class="empty">–</section>`;
+  for (const [, id] of charts_) if (charts.get(id)) charts.get(id).extra = b.map((x) => `${x.tasks}件`);
+}
+
+function renderRules() {
+  const r = hist.rules, max = Math.max(1, ...r.rules.map((x) => x.uses.length));
+  const rules = r.rules.slice().sort((a, b) => b.uses.length - a.uses.length);
+  $("r-n").textContent = rules.length;
+  $("r-rules").innerHTML = rules.map((x) => `<div class="rrow ${x.uses.length ? "" : "unused"}">
+    <span class="mono mute">${x.id}</span><span>${esc(x.text)}</span>
+    <span class="use" data-tip="${esc(x.uses.map((u) => u.id).join(" ") || "未使用")}">${x.uses.length ? `<i class="bar" style="width:${(x.uses.length / max) * 80}px"></i>${x.uses.length}` : "未使用"}</span></div>`).join("") || `<div class="empty">–</div>`;
+  $("r-pn").textContent = r.proposals.length;
+  $("r-props").innerHTML = r.proposals.map((p) => `<div class="prop"><b>${esc(p.rule)}</b>
+    <div class="src">${p.question ? `${esc(p.source)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.source)}</div>
+    <button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button> <button class="btn" disabled title="CLI: algr decline ${p.id}">却下</button></div>`).join("") || `<div class="clear"><span class="mark">✓</span>なし</div>`;
+  const cmax = Math.max(1, ...r.candidates.map((c) => c.human + c.agent));
+  $("r-cands").innerHTML = `<div class="legend"><span><i style="background:var(--human)"></i>人が答えた</span><span><i style="background:var(--bad)"></i>根拠なし</span></div>` +
+    r.candidates.map((c) => `<div class="cand" data-tip="${esc(c.examples.slice(-3).map((e) => `${e.id} ${e.text} → ${e.answer}`).join(" / "))}">
+    <span class="mono">${esc(c.topic || "–")}</span>
+    <span class="stack">${c.human ? `<i style="width:${(c.human / cmax) * 100}%;background:var(--human)"></i>` : ""}${c.agent ? `<i style="width:${(c.agent / cmax) * 100}%;background:var(--bad)"></i>` : ""}</span>
+    <span class="mute" style="font-size:12px;text-align:right">${c.human + c.agent}</span></div>`).join("");
+}
+
+// 状態の置き場所。主経路を横に、人の番を上下に置く
+const POS = { intake: [90, 200], ready: [270, 200], "in-progress": [450, 200], review: [630, 200], done: [810, 200], "needs-decision": [360, 60], failed: [450, 345] };
+function renderFlow() {
+  const f = hist.flow, max = Math.max(1, ...f.edges.map((e) => e.count)), NW = 120, NH = 58;
+  const stages = data.flow.stages;
+  const clip = ([x, y], [tx, ty]) => {  // 箱の縁まで線を縮める
+    const dx = tx - x, dy = ty - y, t = Math.min(Math.abs((NW / 2 + 6) / (dx || 1e-9)), Math.abs((NH / 2 + 6) / (dy || 1e-9)));
+    return [x + dx * t, y + dy * t];
+  };
+  let edges = "", labels = "";
+  for (const e of f.edges) {
+    const a = POS[e.from], b = POS[e.to];
+    const forward = stages.indexOf(e.to) - stages.indexOf(e.from) === 1 && stages.includes(e.from);
+    const k = forward ? 0 : 46, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    const c = [(a[0] + b[0]) / 2 + (dy / len) * k, (a[1] + b[1]) / 2 - (dx / len) * k];
+    const p0 = clip(a, c), p1 = clip(b, c);
+    const cls = e.count === 0 ? "zero" : ["needs-decision"].includes(e.to) ? "human" : e.to === "failed" ? "bad" : "";
+    const w = e.count ? 1.5 + 7 * Math.sqrt(e.count / max) : 1.2;
+    edges += `<path class="edge ${cls}" d="M${p0} Q${c} ${p1}" stroke-width="${w}" marker-end="url(#arrow)" data-tip="${e.event} · ${e.from} → ${e.to} · ${e.count}"/>`;
+    if (e.count) {
+      const m = [0.25 * p0[0] + 0.5 * c[0] + 0.25 * p1[0], 0.25 * p0[1] + 0.5 * c[1] + 0.25 * p1[1]];
+      labels += `<g class="elbl"><rect x="${m[0] - 14}" y="${m[1] - 9}" width="28" height="17" rx="8"/><text x="${m[0]}" y="${m[1] + 4}" text-anchor="middle">${e.count}</text></g>`;
+    }
+  }
+  const nodes = f.states.map((s) => {
+    const [x, y] = POS[s.state], cls = s.state === "needs-decision" ? "human" : s.state;
+    return `<g class="node ${cls}" data-tip="${s.state} · いま ${s.now} · 滞在の中央値 ${dur(s.stay_median_s)}"><rect x="${x - NW / 2}" y="${y - NH / 2}" width="${NW}" height="${NH}" rx="10"/>
+      <text class="name" x="${x - NW / 2 + 10}" y="${y - 10}">${s.state}</text><text class="now" x="${x - NW / 2 + 10}" y="${y + 18}">${s.now}</text>
+      <text class="stay" x="${x + NW / 2 - 10}" y="${y + 18}" text-anchor="end">${s.stay_median_s === null ? "" : "⏱ " + dur(s.stay_median_s)}</text></g>`;
+  }).join("");
+  $("flow").innerHTML = `<svg viewBox="0 0 900 400"><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--mute)"/></marker></defs>${edges}${labels}${nodes}</svg>`;
+}
+
+const RANGES = { "24h": 86400, "7d": 7 * 86400, all: Infinity };
+function renderJobs() {
+  $("j-range").innerHTML = Object.keys(RANGES).map((k) => `<button class="${k === range ? "on" : ""}" data-range="${k}">${{ "24h": "24時間", "7d": "7日", all: "全部" }[k]}</button>`).join("");
+  $("j-legend").innerHTML = Object.entries(ROLE_COLOR).map(([r, c]) => `<span><i style="background:${c};height:8px"></i>${ROLE[r]}</span>`).join("");
+  const now = Date.parse(hist.now), all = hist.jobs.map((j) => ({ ...j, s: Date.parse(j.start), e: j.end ? Date.parse(j.end) : now }));
+  const from = RANGES[range] === Infinity ? Math.min(now - 3600e3, ...all.map((j) => j.s)) : now - RANGES[range] * 1000;
+  const span = now - from, pos = (t) => `${(Math.max(0, t - from) / span) * 100}%`;
+  const tasks = new Map();
+  for (const j of all.filter((j) => j.e >= from)) {
+    if (!tasks.has(j.task_id)) tasks.set(j.task_id, { id: j.task_id, title: j.title, jobs: [] });
+    tasks.get(j.task_id).jobs.push(j);
+  }
+  const rows = [...tasks.values()].map((t) => ({ ...t, first: Math.min(...t.jobs.map((j) => j.s)), tokens: t.jobs.reduce((a, j) => a + j.tokens, 0), busy: t.jobs.reduce((a, j) => a + (j.e - j.s) / 1000, 0) }))
+    .sort((a, b) => b.first - a.first).slice(0, 40);
+  const tmax = Math.max(1, ...rows.map((r) => r.tokens));
+  const ticks = Array.from({ length: 5 }, (_, i) => from + (span * (i + 0.5)) / 5);
+  const tickFmt = (t) => (span <= 86400e3 ? clock(new Date(t).toISOString()) : md(new Date(t).toISOString()));
+  $("jobs").innerHTML = `<div class="jrow head"><span></span><span class="title"></span><span class="ticks">${ticks.map((t) => `<span style="left:${pos(t)}">${tickFmt(t)}</span>`).join("")}</span><span>トークン</span><span class="busy">稼働</span></div>` +
+    (rows.map((r) => `<div class="jrow" data-id="${r.id}"><span class="mono mute">${r.id}</span><span class="title">${esc(r.title)}</span>
+      <span class="track"><b style="left:${pos(r.first)};width:calc(${pos(Math.max(...r.jobs.map((j) => j.e)))} - ${pos(r.first)})"></b>${r.jobs.map((j) => `<i class="${j.end ? "" : "running"}" style="left:${pos(j.s)};width:calc(${pos(j.e)} - ${pos(j.s)});background:${ROLE_COLOR[j.role]}" data-tip="${esc(`${j.job} · ${ROLE[j.role]} · ${dur((j.e - j.s) / 1000)} · ${j.tokens.toLocaleString()} tok${j.end ? "" : " · 実行中"}`)}"></i>`).join("")}</span>
+      <span class="use"><i class="bar" style="width:${(r.tokens / tmax) * 70}px;background:var(--s0)"></i>${r.tokens >= 1000 ? `${Math.round(r.tokens / 1000)}k` : r.tokens}</span>
+      <span class="age busy">${dur(r.busy)}</span></div>`).join("") || `<div class="empty">この期間のジョブはありません</div>`);
+}
+
+function renderView() {
+  if (view === "now" || !hist) return;
+  ({ trend: renderTrend, rules: renderRules, flow: renderFlow, jobs: renderJobs })[view]();
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-range]");
+  if (b) { range = b.dataset.range; renderJobs(); }
+});
+async function loadHistory() {
+  if (view === "now") return;
+  try { hist = await (await fetch("/api/history", { cache: "no-store" })).json(); renderView(); } catch { $("live").style.background = "var(--bad)"; }
+}
+function route() {
+  tip(null);
+  view = (location.hash.slice(1) || "now");
+  if (!$(`view-${view}`)) view = "now";
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.hash === `#${view}`));
+  renderView(); loadHistory();
+}
+addEventListener("hashchange", route);
+
+route();
+load();
+setInterval(load, 3000);
+setInterval(loadHistory, 10000);
+</script>
+</body>
+</html>
