@@ -12,23 +12,27 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from algr import __version__
+from algr import __version__, stats
+from algr.adapters import AdapterError, Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
 from algr.flow import TransitionError
-from algr.model import State, Task
+from algr.model import Event, State, Task
 
 DESCRIPTION = """\
 algr: a flow for Algorithmic Development.
 Rules fill in decisions at intake; ready tasks flow through implementation and review to merge.
-Humans only see needs-decision and failed.
+Humans only see needs-decision and failed (and approved tasks when merge is gated).
 
   algr init                                         # write .algr/config.toml with fake adapters
   algr new "Add login" --question "auth: How do users sign in?"
   algr list --state needs-decision
   algr answer I1 I1-1="OAuth"
+  algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
+  algr merge I1                                     # merge an approved task (flow.merge = "human")
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
+  algr watch                                        # keep ticking until Ctrl-C (the resident process)
 """
 
 INIT_CONFIG = """\
@@ -37,6 +41,8 @@ INIT_CONFIG = """\
 
 [flow]
 max_parallel = 1  # 同時に in-progress にするタスクの数
+max_rework = 2    # レビューの修正依頼で実装に戻す回数の上限。超えたら failed
+merge = "auto"    # "human" にすると、レビューが通ったあと algr merge を待つ
 
 [adapters.task]
 use = "fake.tasks"
@@ -58,14 +64,17 @@ dir = ".algr/decisions"
 use = "stub"
 
 [hooks]
-# "task.done" = [".algr/hooks.py:on_done"]
+# "task.done" = [".algr/hooks.py:on_done"]  # hook(event, engine)。"*" ですべてのイベント
 """
 
 
 def _task_text(task: Task) -> str:
-    lines = [f"{task.id} [{task.state}] {task.title}"]
+    status = f"{task.state}, approved" if task.approved else str(task.state)
+    lines = [f"{task.id} [{status}] {task.title}"]
     if task.purpose:
         lines.append(f"  purpose: {task.purpose}")
+    if task.depends:
+        lines.append(f"  depends: {' '.join(task.depends)}")
     if task.pr:
         lines.append(f"  pr: {task.pr}")
     for q in task.questions:
@@ -78,6 +87,8 @@ def _task_text(task: Task) -> str:
     for d in task.decisions:
         grounds = f" [{' '.join(d.rule_ids)}]" if d.rule_ids else " [agent]"
         lines.append(f"  * {d.id} {d.text} -> {d.answer}{grounds}")
+    for change in task.feedback:
+        lines.append(f"  ! {change}")
     return "\n".join(lines)
 
 
@@ -108,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--purpose", default="")
     p.add_argument("--question", "-q", action="append", default=[], type=_question, help='"topic: text" or "text"')
     p.add_argument("--priority", type=int, default=0)
+    p.add_argument("--depends", action="append", default=[], metavar="TASK_ID", help="wait until this task is done")
     p.add_argument("--source", choices=["human", "auto"], default="human")
 
     p = sub.add_parser("list", help="list tasks")
@@ -120,11 +132,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("answers", nargs="+", type=_answer, metavar="QUESTION_ID=ANSWER")
 
+    p = sub.add_parser("reopen", help="send a failed task back to intake")
+    p.add_argument("task_id")
+    p.add_argument("--note", default="")
+
+    p = sub.add_parser("merge", help="merge an approved task waiting at the merge gate")
+    p.add_argument("task_id")
+
     sub.add_parser("tick", help="take in triggers, collect job results and start jobs once")
     p = sub.add_parser("run", help="tick until no job is running")
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
     p.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
+    p = sub.add_parser("watch", help="keep ticking: take in triggers, dispatch ready tasks, run jobs (Ctrl-C to stop)")
+    p.add_argument("--interval", type=float, default=5.0, help="seconds between ticks")
     sub.add_parser("rules", help="list the rules from the decision store")
+    sub.add_parser("proposals", help="list rule proposals from the distill agent")
+    p = sub.add_parser("accept", help="accept a rule proposal")
+    p.add_argument("proposal_id")
+    p = sub.add_parser("decline", help="decline a rule proposal")
+    p.add_argument("proposal_id")
+    sub.add_parser("stats", help="return rates, STP rate and human interventions from the event log")
     return parser
 
 
@@ -150,6 +177,7 @@ def run(args: argparse.Namespace) -> Any:
             questions=args.question,
             source=args.source,
             priority=args.priority,
+            depends=args.depends,
         )
     if args.command == "list":
         return engine.tasks.list(State(args.state) if args.state else None)
@@ -157,10 +185,31 @@ def run(args: argparse.Namespace) -> Any:
         return engine.tasks.get(args.task_id)
     if args.command == "answer":
         return engine.resolve(args.task_id, dict(args.answers))
+    if args.command == "reopen":
+        return engine.reopen(args.task_id, args.note)
+    if args.command == "merge":
+        return engine.merge(args.task_id)
     if args.command == "tick":
         return {"events": [e.to_dict() for e in engine.tick()]}
     if args.command == "run":
         return {"events": [e.to_dict() for e in engine.run(interval=args.interval, timeout=args.timeout)]}
+    if args.command == "stats":
+        return {"stats": stats.summarize(stats.load(engine.event_log))} if engine.event_log else {"stats": {}}
+    if args.command == "watch":
+
+        def show(events: list[Event]) -> None:
+            for e in events:
+                print(json.dumps(e.to_dict(), ensure_ascii=False) if args.json else f"{e.task_id} {e.name}", flush=True)
+
+        engine.watch(interval=args.interval, on_events=show)
+        return None
+    if args.command == "proposals":
+        return {"proposals": engine.decisions.proposals()}
+    if args.command == "accept":
+        return {"rules": [{"id": engine.decisions.accept(args.proposal_id), "text": "accepted " + args.proposal_id}]}
+    if args.command == "decline":
+        engine.decisions.reject_proposal(args.proposal_id)
+        return {"proposals": engine.decisions.proposals()}
     if args.command == "rules":
         return {"rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]}
     raise AssertionError(args.command)
@@ -181,6 +230,10 @@ def _to_text(value: Any) -> str:
         return "\n".join(_task_text(t) for t in value)
     if "events" in value:
         return "\n".join(f"{e['task_id']} {e['name']}" for e in value["events"])
+    if "stats" in value:
+        return "\n".join(f"{k}: {'-' if v is None else v}" for k, v in value["stats"].items())
+    if "proposals" in value:
+        return "\n".join(f"{p['id']} {p['rule']} (from {p['source']})" for p in value["proposals"])
     if "rules" in value:
         return "\n".join(f"{r['id']} {r['text']}" for r in value["rules"])
     if "created" in value:
@@ -192,13 +245,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = run(args)
-    except (ConfigError, TransitionError, KeyError, TimeoutError) as e:
+    except (ConfigError, TransitionError, Conflict, AdapterError, KeyError, TimeoutError) as e:
         message = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
         if args.json:
             print(json.dumps({"error": message}, ensure_ascii=False), file=sys.stderr)
         else:
             print(f"error: {message}", file=sys.stderr)
         return 1
+    if result is None:
+        return 0
     if args.json:
         print(json.dumps(_to_json(result), ensure_ascii=False))
     else:

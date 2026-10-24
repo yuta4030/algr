@@ -1,7 +1,7 @@
 """状態遷移とイベント、遷移ごとの不変条件。
 
 タスクは 7 つの状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
-人が関わるのは needs-decision と failed だけ。
+人が関わるのは needs-decision と failed、それにマージのゲートを置いたときの承認済みの review だけ。
 """
 
 from __future__ import annotations
@@ -19,14 +19,36 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "decision.resolved": (frozenset({S.NEEDS_DECISION}), S.INTAKE),
     "task.ready": (frozenset({S.INTAKE}), S.READY),
     "task.started": (frozenset({S.READY}), S.IN_PROGRESS),
-    "task.returned": (frozenset({S.IN_PROGRESS}), S.NEEDS_DECISION),
+    "task.returned": (frozenset({S.IN_PROGRESS}), S.INTAKE),
     "task.submitted": (frozenset({S.IN_PROGRESS}), S.REVIEW),
+    "review.changes_requested": (frozenset({S.REVIEW}), S.IN_PROGRESS),
     "review.escalated": (frozenset({S.REVIEW}), S.NEEDS_DECISION),
     "task.done": (frozenset({S.REVIEW}), S.DONE),
     "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW}), S.FAILED),
+    "task.reopened": (frozenset({S.FAILED}), S.INTAKE),
 }
 
 EVENTS = tuple(TRANSITIONS)
+
+# イベントごとのペイロード（Event.data）のキー。hook はこれを当てにしてよい。
+# どのイベントにも遷移元の状態 "from" が付く（task.created は ""）。決断 ID の並びは必ず "questions" で渡す。
+EVENT_DATA: dict[str, tuple[str, ...]] = {
+    "task.created": ("source",),
+    "decision.requested": ("channel", "questions"),
+    "decision.resolved": ("questions",),
+    "task.ready": (),
+    "task.started": (),
+    "task.returned": ("questions",),
+    "task.submitted": ("pr",),
+    "review.changes_requested": ("changes",),
+    "review.escalated": ("questions", "reasons"),
+    "task.done": ("pr", "merged_by"),
+    "task.failed": ("role", "message"),
+    "task.reopened": ("note",),
+}
+
+# hook の差し込み口。イベント名のほかに、すべてのイベントを受ける "*" を使える
+HOOK_POINTS = (*EVENTS, "*")
 
 
 class TransitionError(Exception):
@@ -66,6 +88,7 @@ INVARIANTS: dict[str, tuple[Callable[[Task], str | None], ...]] = {
     "task.returned": (_has_open_questions,),
     "task.submitted": (_has_pr,),
     "review.escalated": (_has_open_questions,),
+    "review.changes_requested": (_has_pr,),
     "task.done": (_has_pr, _no_open_questions),
 }
 
@@ -82,3 +105,10 @@ def check(event: str, task: Task) -> State:
         if problem:
             raise TransitionError(f"{event}: {problem}")
     return target
+
+
+def check_data(event: str, data: dict) -> None:
+    """event のペイロードが EVENT_DATA の形どおりかを確かめる。"""
+    want = {"from", *EVENT_DATA[event]}
+    if set(data) != want:
+        raise TransitionError(f"{event} carries {sorted(data)}, expected {sorted(want)}")

@@ -3,6 +3,8 @@
 エージェントはすべて別プロセスのジョブとして走るので、tick を回して結果を待つ。
 """
 
+import json
+
 from conftest import run_until, state
 
 from algr.model import Event, State
@@ -20,7 +22,7 @@ def test_loop_goes_around_once(engine):
     run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
     task = engine.tasks.get("I1")
     assert [q.id for q in task.open_questions()] == ["I1-1"]
-    assert engine.notifier.sent() == []  # 同期の起票はその場で聞くので通知しない
+    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision: I1-1"}]  # 人に聞くときは必ず知らせる
 
     # 人が答えると起票に戻り、ready になる。蒸留エージェントが判断をルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
@@ -76,8 +78,9 @@ def test_questions_and_decisions_are_kept_apart(engine):
 def test_events_are_logged_to_state_dir(engine, repo):
     engine.create("No questions")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
-    lines = (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [line.split('"name": "')[1].split('"')[0] for line in lines] == [
+    records = [json.loads(line) for line in (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["role"] for r in records if "job" in r] == ["intake", "implement", "review"]  # ジョブの記録も残る
+    assert [r["name"] for r in records if "name" in r] == [
         "task.created",
         "task.ready",
         "task.started",
@@ -92,8 +95,9 @@ def test_returned_during_implementation(engine):
     task = engine.tasks.get("I1")
     assert task.open_questions()[0].text == "Which database?"
     assert task.open_questions()[0].recommended == "sqlite"
-    assert "task.returned" in names(engine, "I1")
-    assert engine.notifier.sent()[-1]["message"].startswith("I1 was returned")
+    # 差し戻しは起票に戻り、ルールで埋まらないので人に上がる
+    assert names(engine, "I1")[-3:] == ["task.started", "task.returned", "decision.requested"]
+    assert engine.notifier.sent()[-1]["message"] == "I1 needs a decision: I1-1"
 
     engine.resolve("I1", {"I1-1": "sqlite"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
@@ -201,3 +205,161 @@ def test_hooks_run_after_default_handler(repo, home):
     engine.create("hooked")
     hook = engine.hooks["task.created"][0]
     assert hook.__globals__["seen"] == [["intake"]]  # 既定の処理（起票エージェントの起動）のあとに呼ばれる
+
+
+def test_events_carry_their_payload_and_source_state(engine):
+    task = engine.create("payload", questions=[{"text": "Which?", "topic": "x"}])
+    run_until(engine, lambda: state(engine, task.id) == State.NEEDS_DECISION)
+    engine.resolve(task.id, {f"{task.id}-1": "this"})
+    run_until(engine, lambda: state(engine, task.id) == State.DONE)
+    by_name = {e.name: e.data for e in engine.events}
+    assert by_name["task.created"] == {"from": "", "source": "human"}
+    assert by_name["decision.resolved"] == {"from": "needs-decision", "questions": [f"{task.id}-1"]}
+    assert by_name["task.done"]["from"] == "review"
+
+
+def test_failing_hook_does_not_stop_the_flow(repo, home):
+    from conftest import write_config
+
+    from algr.config import Config
+    from algr.engine import Engine
+
+    (repo / ".algr" / "hooks.py").write_text(
+        "seen = []\n"
+        "def boom(event, engine):\n    raise RuntimeError('boom')\n"
+        "def every(event, engine):\n    seen.append(event.name)\n",
+        encoding="utf-8",
+    )
+    write_config(repo, '[hooks]\n"task.created" = [".algr/hooks.py:boom"]\n"*" = [".algr/hooks.py:every"]\n')
+    engine = Engine.from_config(Config.load(repo))
+    task = engine.create("hooked")
+    run_until(engine, lambda: state(engine, task.id) == State.DONE)
+    seen = engine.hooks["*"][0].__globals__["seen"]
+    assert seen == [e.name for e in engine.events]  # "*" はすべてのイベントを受ける
+    notes = (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8")
+    assert "hook boom failed on task.created: RuntimeError: boom" in notes
+
+
+def test_stale_save_is_rejected(engine):
+    import pytest
+
+    from algr.adapters import Conflict
+
+    engine.create("one")
+    stale, fresh = engine.tasks.get("I1"), engine.tasks.get("I1")
+    fresh.purpose = "changed elsewhere"
+    engine.tasks.save(fresh)
+    stale.priority = 9
+    with pytest.raises(Conflict):
+        engine.tasks.save(stale)
+    assert engine.tasks.get("I1").purpose == "changed elsewhere"
+
+
+def test_returned_question_is_filled_by_rule_before_asking(engine):
+    engine.decisions.add("db: postgres")
+    engine.create("Store sessions needs-db")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert "decision.requested" not in names(engine, "I1")
+    q = engine.tasks.get("I1").question("I1-1")
+    assert (q.answer, q.by) == ("postgres", "rule")
+
+
+def test_review_requests_changes_and_implement_fixes(engine):
+    engine.create("fixme")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert names(engine, "I1")[-4:] == ["task.submitted", "review.changes_requested", "task.submitted", "task.done"]
+    task = engine.tasks.get("I1")
+    assert (task.pr, task.reworks, task.feedback) == ("pr/I1-fixed", 1, [])
+
+
+def test_rework_has_a_limit(engine):
+    engine.max_rework = 1
+    engine.create("nitpick")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert names(engine, "I1").count("review.changes_requested") == 1
+    assert engine.notifier.sent()[-1]["message"].startswith("I1 failed: review asked for changes more than 1 times")
+
+
+def test_human_reopens_a_failed_task(engine, repo):
+    engine.create("flaky")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    (repo / "flaky-ok").write_text("", encoding="utf-8")
+    engine.reopen("I1", note="fixed the runner")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    reopened = [e for e in engine.events if e.name == "task.reopened"]
+    assert reopened[0].data == {"from": "failed", "note": "fixed the runner"}
+
+
+def test_human_settled_questions_are_not_reopened_by_review(engine):
+    engine.create("contrarian", questions=[{"text": "Which?", "topic": "x"}])
+    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    engine.resolve("I1", {"I1-1": "this"})
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert "review.escalated" not in names(engine, "I1")
+
+
+def test_merge_gate_waits_for_human(engine):
+    engine.merge_gate = True
+    engine.create("gated")
+    run_until(engine, lambda: engine.tasks.get("I1").approved)
+    engine.tick()
+    task = engine.tasks.get("I1")
+    assert (task.state, task.jobs) == (State.REVIEW, {})  # 承認済みのあいだはレビューを起動し直さない
+    assert engine.notifier.sent()[-1]["message"] == "I1 is approved and waiting for merge: pr/I1"
+    engine.merge("I1")
+    assert state(engine, "I1") == State.DONE
+    assert engine.events[-1].data == {"from": "review", "pr": "pr/I1", "merged_by": "human"}
+
+
+def test_dependent_task_waits_until_dependency_is_done(engine, repo):
+    engine.create("first slow")
+    engine.create("second", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS and state(engine, "I2") == State.READY)
+    engine.tick()
+    assert state(engine, "I2") == State.READY  # 同時実行数が空いていても、依存先が done になるまで配車しない
+    (repo / "stop").write_text("", encoding="utf-8")
+    run_until(engine, lambda: state(engine, "I2") == State.DONE)
+    order = [(e.task_id, e.name) for e in engine.events if e.name in ("task.done", "task.started")]
+    assert order.index(("I1", "task.done")) < order.index(("I2", "task.started"))
+
+
+def test_failed_dependency_is_reported_with_its_dependents(engine):
+    engine.create("Will fail")
+    engine.create("after", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert "I1 failed: exit 1 (blocks I2)" in [m["message"] for m in engine.notifier.sent()]
+
+
+def test_agents_can_file_follow_up_tasks(engine):
+    engine.create("spawn")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE and "I2" in [t.id for t in engine.tasks.list()])
+    follow = engine.tasks.get("I2")
+    assert (follow.title, follow.source, follow.depends) == ("follow-up", "auto", ["I1"])
+    assert [(q.text, q.topic) for q in follow.questions] == [("Q?", "f")]
+
+
+def test_follow_up_with_unknown_dependency_fails_the_job(engine):
+    engine.create("spawn-bad")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert "unknown tasks: I99" in engine.notifier.sent()[-1]["message"]
+
+
+def test_token_usage_and_agent_settings(engine, repo):
+    engine.agents = {"implement": {"model": "big", "max_tokens": 5000}}
+    engine.create("metered")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    # 起票・実装・レビューの 3 つのジョブの分を足し上げる
+    assert engine.tasks.get("I1").usage == {"input_tokens": 300, "output_tokens": 30}
+    job = json.loads((engine.executor.dir / "I1.implement.2" / "job.json").read_text(encoding="utf-8"))
+    assert job["input"]["agent"] == {"model": "big", "max_tokens": 5000}
+
+    from algr import stats
+
+    assert stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))["tokens_per_task"] == 330.0
+
+
+def test_watch_keeps_dispatching_until_stopped(engine):
+    engine.create("one")
+    seen = []
+    engine.watch(interval=0.02, on_events=seen.extend, until=lambda: state(engine, "I1") == State.DONE)
+    assert [e.name for e in seen][-1] == "task.done"
