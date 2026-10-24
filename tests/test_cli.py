@@ -83,7 +83,14 @@ def test_watch_stops_on_sigterm(repo):
     import sys
     import time
 
-    proc = subprocess.Popen([sys.executable, "-m", "algr", "-C", str(repo), "watch", "--interval", "0.05"], stdout=subprocess.PIPE, text=True)
-    time.sleep(1.0)
-    proc.send_signal(signal.SIGTERM)
+    argv = [sys.executable, "-m", "algr", "-C", str(repo), "watch", "--interval", "0.05"]
+    if sys.platform == "win32":
+        # Windows の SIGTERM はプロセスを即座に終わらせるので、止める合図は CTRL_BREAK（SIGBREAK）で送る
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        time.sleep(1.0)
+        proc.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, text=True)
+        time.sleep(1.0)
+        proc.send_signal(signal.SIGTERM)
     assert proc.wait(timeout=10) == 0

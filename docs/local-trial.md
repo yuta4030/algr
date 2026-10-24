@@ -67,6 +67,8 @@ permission_mode = "acceptEdits"
 max_budget_usd = 2
 ```
 
+Windows の Claude Code はシェルが PowerShell ツールなので、`Bash(...)` の許可が当たらない。`args` に `"PowerShell(git:*)", "PowerShell(python:*)", "PowerShell(uv:*)"` も足す。
+
 ツールの許可が足りずに止まるときは、砂場に限って `permission_mode = "bypassPermissions"` にする。
 
 実装とレビューに、ローカルのブランチで動くよう追記する（`.algr/prompts/` は利用側の追記）。

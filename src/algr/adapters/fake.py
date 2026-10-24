@@ -27,6 +27,35 @@ def _write_json(path: Path, data: Any) -> None:
     tmp.replace(path)
 
 
+def _pid_alive(pid: int) -> bool:
+    """pid のプロセスが生きているか。Windows の os.kill(pid, 0) は生死を見ずにプロセスを終わらせるので使わない。"""
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED なら、ほかの利用者のプロセスとして生きている
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        # 自分が起動したプロセスなら刈り取る。刈り取らないとゾンビとして生きて見え続ける
+        if os.waitpid(pid, os.WNOHANG)[0] == pid:
+            return False
+    except ChildProcessError:
+        pass  # 別の algr の起動で始めたプロセス
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _append_jsonl(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -138,25 +167,13 @@ class LocalProcess:
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            # 端末の Ctrl-C がエージェントに届かないよう、包みを別のセッション（Windows はプロセスグループ）で起動する
+            **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}),
         )
         (run / "pid").write_text(str(proc.pid), encoding="utf-8")
 
     def _alive(self, run: Path) -> bool:
-        pid = int((run / "pid").read_text(encoding="utf-8"))
-        try:
-            # 自分が起動したプロセスなら刈り取る。刈り取らないとゾンビとして生きて見え続ける
-            if os.waitpid(pid, os.WNOHANG)[0] == pid:
-                return False
-        except ChildProcessError:
-            pass  # 別の algr の起動で始めたプロセス
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
+        return _pid_alive(int((run / "pid").read_text(encoding="utf-8")))
 
     def status(self, job_id: str) -> RunStatus:
         run = self._run_dir(job_id)
@@ -187,11 +204,16 @@ class LocalProcess:
     def stop(self, job_id: str) -> None:
         run = self._run_dir(job_id)
         if (run / "pid").exists() and not (run / "exit").exists():
-            try:
-                # 包みはセッションの頭なので、その下のエージェントごと止める
-                os.killpg(int((run / "pid").read_text(encoding="utf-8")), signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+            pid = int((run / "pid").read_text(encoding="utf-8"))
+            if os.name == "nt":
+                # Windows にはセッションが無いので、プロセスの木ごと止める
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                try:
+                    # 包みはセッションの頭なので、その下のエージェントごと止める
+                    os.killpg(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
             (run / "exit").write_text("143", encoding="utf-8")
 
 

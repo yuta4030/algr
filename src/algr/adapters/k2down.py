@@ -10,6 +10,7 @@ rules.json の差分は PR で見えるので、そのマージをもって人�
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from typing import Any
 
@@ -38,8 +39,10 @@ class K2down:
 
     def _run(self, *args: str) -> str:
         argv = [*self.command, "--dir", str(self.dir), *args]
+        # Windows では Python の標準出力が既定で cp932 になるので、k2down に UTF-8 で出させる
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+            proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", env=env, check=False)
         except FileNotFoundError as e:
             raise K2downError(f"k2down is not installed ({self.command[0]}): uv tool install git+https://github.com/yuta4030/k2down") from e
         if proc.returncode != 0:

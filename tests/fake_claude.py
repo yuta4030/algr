@@ -12,7 +12,7 @@ from pathlib import Path
 
 from algr import fake_agent
 
-prompt = sys.stdin.read()
+prompt = sys.stdin.buffer.read().decode("utf-8")
 job = json.loads(re.findall(r"```json\s*\n(.*?)\n```", prompt, re.DOTALL)[-1])
 log = Path(os.environ["FAKE_CLAUDE_LOG"])
 log.mkdir(parents=True, exist_ok=True)
