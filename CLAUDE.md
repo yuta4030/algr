@@ -51,6 +51,7 @@ src/algr/
   model.py      # Task / Question / Decision / Job / Event
   agents.py     # エージェントの役ごとの入力と結果の形
   fake_agent.py # フェイクのエージェント（python -m algr.fake_agent）
+  stats.py      # 指標の集計（events.jsonl から）
   adapters/     # アダプタ IF（__init__.py）とフェイク（fake.py）
 tests/
 ```

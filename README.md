@@ -31,6 +31,9 @@ algr reopen I2 --note "runner を直した"            # failed のタスクを�
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
 ```
 
+`algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
+STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値を出します。
+
 `algr tick` は 1 周だけ回します（トリガーを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する）。
 
 `--json` を付けると JSON を返します。エラー時は終了コード 1 で、stderr に `error: ...` を書きます。

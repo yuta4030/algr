@@ -62,3 +62,16 @@ def test_reopen_and_merge(algr):
     algr("new", "t")
     assert algr("reopen", "I1")[2] == {"error": "I1 is intake, not failed"}
     assert algr("merge", "I1")[2] == {"error": "I1 is not approved and waiting for merge"}
+
+
+def test_stats(algr):
+    algr("new", "plain")
+    algr("new", "asks", "-q", "auth: How?")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    algr("answer", "I2", "I2-1=OAuth")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    _, data, _ = algr("stats")
+    s = data["stats"]
+    assert (s["tasks"], s["done"], s["stp_rate"], s["interventions_per_task"]) == (2, 2, 0.5, 0.5)
+    assert (s["return_rate_implement"], s["return_rate_review"]) == (0.0, 0.0)
+    assert s["decision_wait_median_s"] >= 0

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from algr import __version__
+from algr import __version__, stats
 from algr.adapters import Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
@@ -143,6 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
     p.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
     sub.add_parser("rules", help="list the rules from the decision store")
+    sub.add_parser("stats", help="return rates, STP rate and human interventions from the event log")
     return parser
 
 
@@ -184,6 +185,8 @@ def run(args: argparse.Namespace) -> Any:
         return {"events": [e.to_dict() for e in engine.tick()]}
     if args.command == "run":
         return {"events": [e.to_dict() for e in engine.run(interval=args.interval, timeout=args.timeout)]}
+    if args.command == "stats":
+        return {"stats": stats.summarize(stats.load(engine.event_log))} if engine.event_log else {"stats": {}}
     if args.command == "rules":
         return {"rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]}
     raise AssertionError(args.command)
@@ -204,6 +207,8 @@ def _to_text(value: Any) -> str:
         return "\n".join(_task_text(t) for t in value)
     if "events" in value:
         return "\n".join(f"{e['task_id']} {e['name']}" for e in value["events"])
+    if "stats" in value:
+        return "\n".join(f"{k}: {'-' if v is None else v}" for k, v in value["stats"].items())
     if "rules" in value:
         return "\n".join(f"{r['id']} {r['text']}" for r in value["rules"])
     if "created" in value:
