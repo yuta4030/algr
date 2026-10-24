@@ -50,8 +50,10 @@ src/algr/
   flow.py       # 状態遷移と不変条件
   model.py      # Task / Question / Decision / Job / Event
   agents.py     # エージェントの役ごとの入力と結果の形
+  agent.py      # Claude Code でエージェントを走らせるコマンド（python -m algr.agent）
+  prompts/      # 役ごとのプロンプトと安全網のルール（利用側は .algr/prompts/ に追記する）
   fake_agent.py # フェイクのエージェント（python -m algr.fake_agent）
   stats.py      # 指標の集計（events.jsonl から）
-  adapters/     # アダプタ IF（__init__.py）とフェイク（fake.py）
+  adapters/     # アダプタ IF（__init__.py）、フェイク（fake.py）、k2down（k2down.py）
 tests/
 ```

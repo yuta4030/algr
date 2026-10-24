@@ -129,6 +129,33 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 
 結果の形が違えば、ジョブは失敗として扱います。形の定義は `src/algr/agents.py` にあります。
 
+### Claude Code で動かす
+
+`python -m algr.agent` は、役のプロンプトとジョブを Claude Code（`claude -p --output-format json`）に渡し、
+答えの最後の ```json ブロックを結果として書き戻すコマンドです。使ったトークン数も結果に添えます。
+
+```toml
+[adapters.executor]
+use = "fake.process"
+command = ["python", "-m", "algr.agent"]
+max_parallel = 2
+
+[agents.default]
+permission_mode = "acceptEdits"         # claude の --permission-mode
+max_budget_usd = 2                      # claude の --max-budget-usd
+[agents.review]
+model = "haiku"                         # claude の --model。ほかに command（既定 ["claude"]）と args を書ける
+```
+
+プロンプトは変わりにくいものから順に並べ、共通部分のキャッシュを効かせます。
+
+1. algr 共通（`src/algr/prompts/common.md`）：守ること、安全網のルール、結果の返し方
+2. 役（`src/algr/prompts/<役>.md`）
+3. 利用側の追記（`.algr/prompts/common.md`、`.algr/prompts/<役>.md`）。社内固有のことはここに書く
+4. ジョブ（タスクの要約とルール）
+
+安全網のルール（公開 IF や API の契約の変更、削除、外部への送信や公開、セキュリティと権限）は、ルールより優先して人に上げます。
+
 ## 設定とアダプタ
 
 リポジトリの `.algr/config.toml` に、個人の `~/.algr/config.toml`（`ALGR_HOME` で変更可）を重ねます。個人の設定が勝ちます。
@@ -149,9 +176,10 @@ max_parallel = 2                        # ジョブを同時に走らせる数
 use = ".algr/adapters/slack.py:Slack"   # リポジトリに置いたアダプタ
 channel = "#dev"
 
-[agents.review]
-model = "small"                         # 役ごとの設定。ジョブの input.agent として実行アダプタに渡す
-max_tokens = 20000
+[agents.default]                        # すべての役に効く設定。ジョブの input.agent として実行アダプタに渡す
+max_budget_usd = 2
+[agents.review]                         # 役ごとの設定が default を上書きする
+model = "haiku"
 
 [hooks]
 "task.done" = [".algr/hooks.py:on_done"]  # hook(event, engine)

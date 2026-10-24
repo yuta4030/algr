@@ -145,10 +145,12 @@ class Config:
         return int(self.data["flow"]["max_parallel"])
 
     def agents(self) -> dict[str, dict[str, Any]]:
-        for role in self.data["agents"]:
-            if role not in {str(r) for r in Role}:
+        """役 → エージェントの設定。[agents.default] はすべての役に効き、役ごとの設定が上書きする。"""
+        table = self.data["agents"]
+        for role in table:
+            if role != "default" and role not in {str(r) for r in Role}:
                 raise ConfigError(f"agents: unknown role {role!r}")
-        return {role: dict(options) for role, options in self.data["agents"].items()}
+        return {str(role): merge(table.get("default", {}), table.get(str(role), {})) for role in Role}
 
     @property
     def max_rework(self) -> int:
