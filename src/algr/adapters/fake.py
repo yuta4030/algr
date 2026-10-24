@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from algr.adapters import Context, Rule, RunState, RunStatus
+from algr.adapters import Conflict, Context, Rule, RunState, RunStatus
 from algr.model import Event, Job, State, Task
 
 
@@ -60,7 +60,12 @@ class FileTasks:
         return [t for t in tasks if state is None or t.state == state]
 
     def save(self, task: Task) -> None:
-        _write_json(self._path(task.id), task.to_dict())
+        path = self._path(task.id)
+        stored = json.loads(path.read_text(encoding="utf-8")).get("version", 0) if path.exists() else 0
+        if stored != task.version:
+            raise Conflict(f"{task.id} was changed by someone else (version {task.version}, stored {stored})")
+        task.version += 1
+        _write_json(path, task.to_dict())
 
     def comment(self, task_id: str, text: str) -> None:
         _append_jsonl(self.dir / f"{task_id}.comments.jsonl", {"text": text})

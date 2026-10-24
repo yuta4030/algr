@@ -9,12 +9,13 @@ from __future__ import annotations
 import json
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from algr import flow
-from algr.adapters import DecisionStore, ExecutorAdapter, Notifier, RunState, TaskAdapter, TriggerAdapter
+from algr.adapters import Conflict, DecisionStore, ExecutorAdapter, Notifier, RunState, RunStatus, TaskAdapter, TriggerAdapter
 from algr.agents import DistillResult, ImplementResult, IntakeResult, ResultError, ReviewResult, job_input, parse
 from algr.config import Config
 from algr.model import Channel, Event, Job, Question, Role, State, Task
@@ -23,6 +24,15 @@ Hook = Callable[[Event, "Engine"], Any]
 
 # 状態ごとに、その状態を先へ進めるエージェントの役
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
+
+
+@contextmanager
+def _retry_next_tick() -> Iterator[None]:
+    """保存がぶつかったら、そのタスクはこの tick では諦める。保存されていないので、次の tick で読み直してやり直せる。"""
+    try:
+        yield
+    except Conflict:
+        pass
 
 
 class Engine:
@@ -91,7 +101,8 @@ class Engine:
             while self._pending:
                 event = self._pending.popleft()
                 handler = getattr(self, "_on_" + event.name.replace(".", "_"))
-                handler(self.tasks.get(event.task_id), event)
+                with _retry_next_tick():  # ハンドラが起動しそこねたジョブは、次の tick の _start_jobs が起動する
+                    handler(self.tasks.get(event.task_id), event)
                 for hook in [*self.hooks.get(event.name, []), *self.hooks.get("*", [])]:
                     self._call_hook(hook, event)
         finally:
@@ -154,7 +165,8 @@ class Engine:
         self.poll()
         self.dispatch()
         for task in self.tasks.list():
-            self._start_jobs(task)
+            with _retry_next_tick():
+                self._start_jobs(task)
         return self.events[start:]
 
     def run(self, interval: float = 0.5, timeout: float | None = None) -> list[Event]:
@@ -182,8 +194,9 @@ class Engine:
         for task in sorted(self.tasks.list(State.READY), key=lambda t: -t.priority):
             if len(self.tasks.list(State.IN_PROGRESS)) >= self.max_parallel:
                 break
-            self.emit("task.started", task)
-            started.append(task)
+            with _retry_next_tick():
+                self.emit("task.started", task)
+                started.append(task)
         return started
 
     # --- ジョブ ------------------------------------------------------------
@@ -219,24 +232,29 @@ class Engine:
                 status = self.executor.status(job_id)
                 if status.state in (RunState.RUNNING, RunState.BLOCKED):
                     continue
-                # 前のジョブの処理でタスクが書き換わっているかもしれないので、読み直してから進める
-                task = self.tasks.get(listed.id)
-                if task.jobs.get(role) != job_id:
-                    continue
-                del task.jobs[role]
-                if role != Role.DISTILL and ROLE_FOR_STATE.get(task.state) != role:
-                    self.tasks.save(task)  # 状態が先に進んだあとで届いた古い結果は捨てる
-                    continue
-                result = None
-                if status.state == RunState.COMPLETED:
-                    try:
-                        result = parse(Role(role), status.result)
-                    except ResultError as e:
-                        status.message = f"bad result from {role}: {e}"
-                if result is None:
-                    self._job_failed(task, Role(role), status.message)
-                else:
-                    self._job_done(task, result)
+                with _retry_next_tick():
+                    self._collect(listed.id, role, job_id, status)
+
+    def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> None:
+        """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。"""
+        # 前のジョブの処理でタスクが書き換わっているかもしれないので、読み直してから進める
+        task = self.tasks.get(task_id)
+        if task.jobs.get(role) != job_id:
+            return
+        del task.jobs[role]
+        if role != Role.DISTILL and ROLE_FOR_STATE.get(task.state) != role:
+            self.tasks.save(task)  # 状態が先に進んだあとで届いた古い結果は捨てる
+            return
+        result = None
+        if status.state == RunState.COMPLETED:
+            try:
+                result = parse(Role(role), status.result)
+            except ResultError as e:
+                status.message = f"bad result from {role}: {e}"
+        if result is None:
+            self._job_failed(task, Role(role), status.message)
+        else:
+            self._job_done(task, result)
 
     def _job_failed(self, task: Task, role: Role, message: str) -> None:
         if role == Role.DISTILL:

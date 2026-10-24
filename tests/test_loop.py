@@ -234,3 +234,18 @@ def test_failing_hook_does_not_stop_the_flow(repo, home):
     assert seen == [e.name for e in engine.events]  # "*" はすべてのイベントを受ける
     notes = (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8")
     assert "hook boom failed on task.created: RuntimeError: boom" in notes
+
+
+def test_stale_save_is_rejected(engine):
+    import pytest
+
+    from algr.adapters import Conflict
+
+    engine.create("one")
+    stale, fresh = engine.tasks.get("I1"), engine.tasks.get("I1")
+    fresh.purpose = "changed elsewhere"
+    engine.tasks.save(fresh)
+    stale.priority = 9
+    with pytest.raises(Conflict):
+        engine.tasks.save(stale)
+    assert engine.tasks.get("I1").purpose == "changed elsewhere"

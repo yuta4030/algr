@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from algr import __version__
+from algr.adapters import Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
 from algr.flow import TransitionError
@@ -192,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = run(args)
-    except (ConfigError, TransitionError, KeyError, TimeoutError) as e:
+    except (ConfigError, TransitionError, Conflict, KeyError, TimeoutError) as e:
         message = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
         if args.json:
             print(json.dumps({"error": message}, ensure_ascii=False), file=sys.stderr)

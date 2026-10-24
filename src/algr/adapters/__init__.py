@@ -26,6 +26,10 @@ class Context:
         return p if p.is_absolute() else self.root / p
 
 
+class Conflict(Exception):
+    """保存しようとしたタスクが、読んだあとにほかの処理で書き換えられていた。読み直してやり直す。"""
+
+
 @runtime_checkable
 class TaskAdapter(Protocol):
     """issue を取得し、状態の読み書きとコメントを行う。"""
@@ -38,7 +42,12 @@ class TaskAdapter(Protocol):
 
     def list(self, state: State | None = None) -> list[Task]: ...
 
-    def save(self, task: Task) -> None: ...
+    def save(self, task: Task) -> None:
+        """楽観ロックで保存する。保存済みの版が task.version と違えば Conflict を投げ、同じなら版を 1 つ進めて保存する。
+
+        task.version は保存後の版に書き換える。続けて同じ task を保存してよい。
+        """
+        ...
 
     def comment(self, task_id: str, text: str) -> None: ...
 
