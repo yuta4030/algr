@@ -17,7 +17,7 @@ from algr.adapters import AdapterError, Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
 from algr.flow import TransitionError
-from algr.model import State, Task
+from algr.model import Event, State, Task
 
 DESCRIPTION = """\
 algr: a flow for Algorithmic Development.
@@ -32,6 +32,7 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr merge I1                                     # merge an approved task (flow.merge = "human")
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
+  algr watch                                        # keep ticking until Ctrl-C (the resident process)
 """
 
 INIT_CONFIG = """\
@@ -142,6 +143,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("run", help="tick until no job is running")
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
     p.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
+    p = sub.add_parser("watch", help="keep ticking: take in triggers, dispatch ready tasks, run jobs (Ctrl-C to stop)")
+    p.add_argument("--interval", type=float, default=5.0, help="seconds between ticks")
     sub.add_parser("rules", help="list the rules from the decision store")
     sub.add_parser("proposals", help="list rule proposals from the distill agent")
     p = sub.add_parser("accept", help="accept a rule proposal")
@@ -192,6 +195,14 @@ def run(args: argparse.Namespace) -> Any:
         return {"events": [e.to_dict() for e in engine.run(interval=args.interval, timeout=args.timeout)]}
     if args.command == "stats":
         return {"stats": stats.summarize(stats.load(engine.event_log))} if engine.event_log else {"stats": {}}
+    if args.command == "watch":
+
+        def show(events: list[Event]) -> None:
+            for e in events:
+                print(json.dumps(e.to_dict(), ensure_ascii=False) if args.json else f"{e.task_id} {e.name}", flush=True)
+
+        engine.watch(interval=args.interval, on_events=show)
+        return None
     if args.command == "proposals":
         return {"proposals": engine.decisions.proposals()}
     if args.command == "accept":
@@ -241,6 +252,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"error: {message}", file=sys.stderr)
         return 1
+    if result is None:
+        return 0
     if args.json:
         print(json.dumps(_to_json(result), ensure_ascii=False))
     else:

@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import json
+import signal
+import threading
 import time
 from collections import deque
 from collections.abc import Callable, Iterator
@@ -216,6 +218,34 @@ class Engine:
             if deadline is not None and time.monotonic() > deadline:
                 raise TimeoutError(f"jobs still running after {timeout}s")
             time.sleep(interval)
+
+    def watch(
+        self,
+        interval: float = 5.0,
+        on_events: Callable[[list[Event]], None] | None = None,
+        until: Callable[[], bool] | None = None,
+    ) -> None:
+        """常駐して tick を回し続ける。トリガーの取り込みと ready の配車が止まらないようにする。
+
+        until が真を返すか、SIGINT（Ctrl-C）か SIGTERM を受けると、いまの tick を終えてから止まる。
+        保存がぶつかっても次の tick でやり直すので、algr answer などの人の操作と同時に動かしてよい。
+        """
+        stopping: list[int] = []
+        previous = {}
+        if threading.current_thread() is threading.main_thread():
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                previous[sig] = signal.signal(sig, lambda signum, frame: stopping.append(signum))
+        try:
+            while not stopping and (until is None or not until()):
+                events = self.tick()
+                if events and on_events:
+                    on_events(events)
+                deadline = time.monotonic() + interval
+                while not stopping and time.monotonic() < deadline:
+                    time.sleep(min(0.1, interval))
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
 
     def handle_external(self, event: Event) -> None:
         if event.name == "task.created":

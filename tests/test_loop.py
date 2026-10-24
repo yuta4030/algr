@@ -356,3 +356,10 @@ def test_token_usage_and_agent_settings(engine, repo):
     from algr import stats
 
     assert stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))["tokens_per_task"] == 330.0
+
+
+def test_watch_keeps_dispatching_until_stopped(engine):
+    engine.create("one")
+    seen = []
+    engine.watch(interval=0.02, on_events=seen.extend, until=lambda: state(engine, "I1") == State.DONE)
+    assert [e.name for e in seen][-1] == "task.done"

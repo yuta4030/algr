@@ -75,3 +75,15 @@ def test_stats(algr):
     assert (s["tasks"], s["done"], s["stp_rate"], s["interventions_per_task"]) == (2, 2, 0.5, 0.5)
     assert (s["return_rate_implement"], s["return_rate_review"]) == (0.0, 0.0)
     assert s["decision_wait_median_s"] >= 0
+
+
+def test_watch_stops_on_sigterm(repo):
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    proc = subprocess.Popen([sys.executable, "-m", "algr", "-C", str(repo), "watch", "--interval", "0.05"], stdout=subprocess.PIPE, text=True)
+    time.sleep(1.0)
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=10) == 0
