@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>algr</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #fff; --line: #e4e3dd; --ink: #1d1d1b; --mute: #8a8981;
+  --agent: #3d6fd8; --human: #d9822b; --queue: #b5b3aa; --ok: #2f9e6a; --bad: #d1453b;
+  --track: #ecebe5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --panel: #1e1e1c; --line: #2e2e2b; --ink: #ecebe5; --mute: #8a8981;
+    --agent: #6f97ef; --human: #eda055; --queue: #5c5b56; --ok: #4cbf89; --bad: #ef6a5f; --track: #2a2a27;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mute { color: var(--mute); }
+header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+.counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.count { display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; background: var(--track); font-size: 12px; }
+.count b { font-weight: 600; }
+.updated { margin-left: auto; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.live { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+main { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); gap: 20px; padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+section > h2 { font-size: 12px; font-weight: 600; color: var(--mute); margin: 0 0 10px; letter-spacing: .06em; display: flex; gap: 8px; align-items: center; }
+h2 .n { background: var(--track); color: var(--ink); border-radius: 99px; padding: 0 7px; }
+
+/* あなたの番 */
+.turns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.turn { border: 1px solid var(--line); border-left: 3px solid var(--human); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.turn.failed { border-left-color: var(--bad); }
+.turn .top { display: flex; gap: 8px; align-items: baseline; }
+.turn .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn .q { font-size: 12px; color: var(--mute); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.btn { align-self: flex-start; font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--track); color: var(--mute); cursor: not-allowed; }
+.clear { display: flex; align-items: center; gap: 10px; color: var(--ok); font-weight: 600; padding: 6px 0; }
+.clear .mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ok); display: grid; place-items: center; font-size: 12px; }
+
+/* 進捗 */
+.rows { display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(180px, 1.3fr) 72px 48px; gap: 12px; align-items: center; padding: 9px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+.row:hover { background: var(--bg); }
+.row.head { cursor: default; border-top: 0; padding-top: 0; font-size: 11px; color: var(--mute); }
+.row.head:hover { background: none; }
+.row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badges { display: inline-flex; gap: 4px; margin-left: 6px; }
+.badge { font-size: 11px; color: var(--mute); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.steps.labels span { font-size: 10px; text-align: center; color: var(--mute); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.step { height: 8px; border-radius: 2px; background: var(--track); }
+.step.past { background: color-mix(in srgb, var(--ok) 55%, var(--track)); }
+.step.now { background: var(--queue); }
+.step.now.agent { background: var(--agent); animation: pulse 1.6s ease-in-out infinite; }
+.step.now.human { background: var(--human); }
+.step.now.deps { background: repeating-linear-gradient(45deg, var(--queue) 0 4px, var(--track) 4px 8px); }
+.step.now.bad { background: var(--bad); }
+.step.now.done, .step.done { background: var(--ok); }
+@keyframes pulse { 50% { opacity: .45; } }
+.who { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--queue); }
+.dot.agent { background: var(--agent); } .dot.human { background: var(--human); } .dot.bad { background: var(--bad); } .dot.done { background: var(--ok); }
+.age { font-size: 12px; color: var(--mute); text-align: right; }
+details.done-list summary { cursor: pointer; font-size: 12px; color: var(--mute); padding: 8px 4px 0; list-style: none; }
+details.done-list summary::before { content: "▸ "; } details.done-list[open] summary::before { content: "▾ "; }
+.empty { color: var(--mute); font-size: 12px; padding: 8px 4px; }
+
+/* 指標 */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: var(--bg); border-radius: 8px; padding: 10px; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .k { font-size: 11px; color: var(--mute); }
+.tile.pair { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.feed { list-style: none; margin: 0; padding: 0; font-size: 12px; max-height: 340px; overflow: auto; }
+.feed li { display: grid; grid-template-columns: 42px 30px 1fr; gap: 6px; padding: 3px 0; cursor: pointer; }
+.feed .ev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.list li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
+.list li .btn { margin-left: auto; padding: 0 8px; }
+
+/* 詳細 */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .25); z-index: 5; display: none; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--panel); border-left: 1px solid var(--line); z-index: 6; overflow: auto; padding: 18px 20px; transform: translateX(100%); transition: transform .18s; }
+.open .scrim { display: block; } .open .drawer { transform: none; }
+.drawer h3 { margin: 4px 0 12px; font-size: 18px; }
+.drawer h4 { font-size: 11px; color: var(--mute); letter-spacing: .06em; margin: 18px 0 6px; font-weight: 600; }
+.close { float: right; font: inherit; background: none; border: 0; color: var(--mute); cursor: pointer; font-size: 18px; }
+.kv { display: grid; grid-template-columns: 72px 1fr; gap: 4px 10px; font-size: 13px; }
+.item { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+.item .a { font-weight: 600; }
+.ground { font-size: 11px; border-radius: 4px; padding: 0 5px; align-self: start; white-space: nowrap; }
+.ground.rule { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.ground.human { background: color-mix(in srgb, var(--human) 18%, transparent); color: var(--human); }
+.ground.agent { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.ground.open { background: var(--human); color: #fff; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--line); font-size: 12px; }
+.timeline li { position: relative; padding: 3px 0 3px 8px; display: flex; gap: 8px; }
+.timeline li::before { content: ""; position: absolute; left: -18px; top: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--queue); }
+.timeline li.human::before { background: var(--human); } .timeline li.bad::before { background: var(--bad); } .timeline li.ok::before { background: var(--ok); }
+.cli { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.cli code { flex: 1; background: var(--bg); padding: 6px 8px; border-radius: 6px; font-size: 12px; overflow: auto; white-space: nowrap; }
+.cli .btn.copy { cursor: pointer; color: var(--ink); }
+.fail { color: var(--bad); font-size: 13px; }
+
+/* 狭い画面：行を 2 段にする */
+@media (max-width: 860px) {
+  main { grid-template-columns: minmax(0, 1fr); padding: 16px; } header { padding: 12px 16px; flex-wrap: wrap; }
+  .row { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "id title age" ". steps who"; row-gap: 6px; }
+  .row > .id { grid-area: id; } .row > .title { grid-area: title; } .row > .steps { grid-area: steps; } .row > .who { grid-area: who; } .row > .age { grid-area: age; }
+  .row.head { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>algr</h1>
+  <div class="counts" id="counts"></div>
+  <div class="updated mute"><span class="live" id="live"></span><span id="updated"></span></div>
+</header>
+<main>
+  <div>
+    <section><h2>あなたの番 <span class="n" id="turn-n">0</span></h2><div id="turns"></div></section>
+    <section><h2>進捗 <span class="n" id="active-n">0</span></h2><div class="rows" id="rows"></div></section>
+  </div>
+  <div>
+    <section><h2>指標</h2><div class="tiles" id="tiles"></div></section>
+    <section><h2>最近の動き</h2><ul class="feed" id="feed"></ul></section>
+    <section><h2>ルール <span class="n" id="rule-n">0</span></h2><ul class="list" id="rules"></ul></section>
+  </div>
+</main>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer"></aside>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ROLE = { intake: "起票", implement: "実装", review: "レビュー", distill: "蒸留" };
+const ACTION = { answer: "回答する", reopen: "やり直す", merge: "マージする" };
+let data = null, openId = null;
+
+function ago(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, (Date.parse(data.now) - Date.parse(ts)) / 1000);
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+// いま誰の手にあるか：色の名前と短い言葉
+function who(t) {
+  const p = t.progress;
+  if (t.state === "failed") return ["bad", "失敗"];
+  if (t.state === "done") return ["done", "完了"];
+  if (p.waiting === "human") return ["human", "あなた"];
+  if (p.waiting === "agent") return ["agent", p.roles.filter((r) => r !== "distill").map((r) => ROLE[r]).join("・")];
+  if (p.waiting === "deps") return ["deps", p.blocked_by.join(" ")];
+  return ["queue", "待ち"];
+}
+
+function steps(t) {
+  const stages = data.flow.stages, at = stages.indexOf(t.progress.stage);
+  const [kind] = who(t);
+  return stages.map((s, i) => {
+    let c = "step";
+    if (t.state === "done") c += " done";
+    else if (i < at) c += " past";
+    else if (i === at) c += " now " + kind;
+    return `<i class="${c}" title="${s}"></i>`;
+  }).join("");
+}
+
+function badges(t) {
+  const p = t.progress, b = [];
+  if (p.asked) b.push(`<span class="badge" title="人に聞いた回数">? ${p.asked}</span>`);
+  if (p.returned) b.push(`<span class="badge" title="実装からの差し戻し">↩ ${p.returned}</span>`);
+  if (p.changes) b.push(`<span class="badge" title="修正依頼">✎ ${p.changes}</span>`);
+  return b.length ? `<span class="badges">${b.join("")}</span>` : "";
+}
+
+function row(t) {
+  const [kind, label] = who(t);
+  return `<div class="row" data-id="${t.id}">
+    <span class="id mono mute">${t.id}</span>
+    <span class="title">${esc(t.title)}${badges(t)}</span>
+    <span class="steps">${steps(t)}</span>
+    <span class="who"><i class="dot ${kind}"></i>${esc(label)}</span>
+    <span class="age" title="この状態になってから">${ago(t.progress.since)}</span>
+  </div>`;
+}
+
+function render() {
+  const tasks = data.tasks, by = (s) => tasks.filter((t) => t.state === s);
+  $("counts").innerHTML = data.flow.states.map((s) => `<span class="count">${s} <b>${by(s).length}</b></span>`).join("");
+  $("updated").textContent = clock(data.now);
+
+  // あなたの番
+  const turns = tasks.filter((t) => t.actions.length);
+  $("turn-n").textContent = turns.length;
+  $("turns").innerHTML = turns.length ? `<div class="turns">${turns.map((t) => {
+    const line = t.state === "failed" ? t.progress.failure?.message : t.state === "review" ? t.pr : t.questions.filter((q) => q.answer === null).map((q) => q.text).join(" / ");
+    return `<div class="turn ${t.state === "failed" ? "failed" : ""}" data-id="${t.id}">
+      <div class="top"><span class="mono mute">${t.id}</span><span class="title">${esc(t.title)}</span></div>
+      <div class="q">${esc(line)}</div>
+      <button class="btn" disabled title="GUI からの操作はまだ有効にしていません">${ACTION[t.actions[0].name]}</button>
+    </div>`;
+  }).join("")}</div>` : `<div class="clear"><span class="mark">✓</span>なし</div>`;
+
+  // 進捗
+  const order = { human: 0, agent: 1, deps: 2, queue: 3 };
+  const active = tasks.filter((t) => t.state !== "done").sort((a, b) =>
+    (a.state === "failed") - (b.state === "failed") || order[a.progress.waiting] - order[b.progress.waiting] ||
+    data.flow.stages.indexOf(b.progress.stage) - data.flow.stages.indexOf(a.progress.stage));
+  const done = by("done").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
+  $("active-n").textContent = active.length;
+  const head = `<div class="row head"><span></span><span></span><span class="steps labels">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</span><span></span><span></span></div>`;
+  $("rows").innerHTML = head + (active.length ? active.map(row).join("") : `<div class="empty">動いているタスクはありません</div>`) +
+    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done ${done.length}</summary>${done.map(row).join("")}</details>` : "");
+
+  // 指標：差し戻し率は人の介入と必ず並べる
+  const st = data.stats, pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`), num = (v) => (v === null || v === undefined ? "–" : v);
+  $("tiles").innerHTML = `
+    <div class="tile"><div class="v">${pct(st.stp_rate)}</div><div class="k">STP</div></div>
+    <div class="tile"><div class="v">${num(st.done)}<span class="mute" style="font-size:14px"> / ${num(st.tasks)}</span></div><div class="k">done / 全体</div></div>
+    <div class="tile pair">
+      <div><div class="v">${pct(st.return_rate_implement)}</div><div class="k">差し戻し・実装</div></div>
+      <div><div class="v">${pct(st.return_rate_review)}</div><div class="k">差し戻し・レビュー</div></div>
+      <div><div class="v">${num(st.interventions_per_task)}</div><div class="k">介入 / 件</div></div>
+    </div>
+    <div class="tile"><div class="v">${pct(st.rework_rate)}</div><div class="k">修正依頼</div></div>
+    <div class="tile"><div class="v">${st.tokens_per_task ? Math.round(st.tokens_per_task).toLocaleString() : "–"}</div><div class="k">トークン / 件</div></div>`;
+
+  $("feed").innerHTML = data.events.slice().reverse().slice(0, 30).map((e) =>
+    `<li data-id="${e.task_id}"><span class="mute">${clock(e.ts)}</span><span class="mono mute">${e.task_id}</span><span class="ev mono">${e.name}</span></li>`).join("") || `<li class="mute">–</li>`;
+
+  $("rule-n").textContent = data.rules.length;
+  $("rules").innerHTML = data.proposals.map((p) =>
+    `<li><span class="ground human">提案</span><span>${esc(p.rule)}</span><button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button></li>`).join("") +
+    data.rules.map((r) => `<li><span class="mono mute">${r.id}</span><span>${esc(r.text)}</span></li>`).join("");
+
+  if (openId) detail(openId);
+}
+
+function ground(rule_ids, by) {
+  if (rule_ids && rule_ids.length) return `<span class="ground rule mono">${rule_ids.join(" ")}</span>`;
+  if (by === "human") return `<span class="ground human">人</span>`;
+  return `<span class="ground agent">根拠なし</span>`;
+}
+
+function detail(id) {
+  const t = data.tasks.find((x) => x.id === id);
+  if (!t) return close();
+  openId = id;
+  const [kind, label] = who(t);
+  const qs = t.questions.map((q) => `<div class="item"><span class="mono mute">${q.id}</span><span>${esc(q.text)}${q.answer !== null ? `<br><span class="a">${esc(q.answer)}</span>` : q.recommended ? `<br><span class="mute">推奨 ${esc(q.recommended)}</span>` : ""}</span>${q.answer === null ? `<span class="ground open">未決</span>` : ground(q.rule_ids, q.by)}</div>`).join("");
+  const ds = t.decisions.map((d) => `<div class="item"><span class="mono mute">${d.id}</span><span>${esc(d.text)}<br><span class="a">${esc(d.answer)}</span></span>${ground(d.rule_ids, "agent")}</div>`).join("");
+  const tone = (n) => (["decision.requested", "review.escalated", "decision.resolved", "task.reopened"].includes(n) ? "human" : n === "task.failed" ? "bad" : n === "task.done" ? "ok" : "");
+  const usage = Object.values(t.usage || {}).reduce((a, b) => a + b, 0);
+  $("drawer").innerHTML = `
+    <button class="close" id="close" aria-label="閉じる">×</button>
+    <span class="mono mute">${t.id}</span>
+    <h3>${esc(t.title)}</h3>
+    <div class="steps" style="margin-bottom:4px">${steps(t)}</div>
+    <div class="steps labels" style="margin-bottom:12px">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</div>
+    <div class="kv">
+      <span class="mute">いま</span><span class="who"><i class="dot ${kind}"></i>${esc(label)} <span class="mute">· ${ago(t.progress.since)}</span></span>
+      ${t.purpose ? `<span class="mute">目的</span><span>${esc(t.purpose)}</span>` : ""}
+      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.approved ? " ✓" : ""}</span>` : ""}
+      ${t.depends.length ? `<span class="mute">依存</span><span class="mono">${t.depends.join(" ")}</span>` : ""}
+      ${usage ? `<span class="mute">トークン</span><span>${usage.toLocaleString()}</span>` : ""}
+    </div>
+    ${t.progress.failure ? `<h4>失敗</h4><div class="fail">${ROLE[t.progress.failure.role] || ""} · ${esc(t.progress.failure.message)}</div>` : ""}
+    ${t.actions.map((a) => `<h4>あなたの番</h4><button class="btn" disabled title="GUI からの操作はまだ有効にしていません">${ACTION[a.name]}</button>
+      <div class="cli"><code class="mono">${esc(a.cli)}</code><button class="btn copy" data-cli="${esc(a.cli)}">copy</button></div>`).join("")}
+    ${qs ? `<h4>未決事項</h4>${qs}` : ""}
+    ${ds ? `<h4>判断</h4>${ds}` : ""}
+    ${t.feedback.length ? `<h4>修正依頼</h4>${t.feedback.map((f) => `<div class="item"><span>✎</span><span>${esc(f)}</span><span></span></div>`).join("")}` : ""}
+    <h4>経過</h4>
+    <ul class="timeline">${t.events.map((e) => `<li class="${tone(e.name)}"><span class="mute">${clock(e.ts)}</span><span class="mono">${e.name}</span></li>`).join("")}</ul>`;
+  document.body.classList.add("open");
+}
+function close() { openId = null; document.body.classList.remove("open"); }
+
+document.addEventListener("click", (ev) => {
+  const copy = ev.target.closest(".copy");
+  if (copy) { navigator.clipboard?.writeText(copy.dataset.cli); copy.textContent = "✓"; return; }
+  if (ev.target.closest("#close") || ev.target.id === "scrim") return close();
+  const hit = ev.target.closest("[data-id]");
+  if (hit && !ev.target.closest(".drawer")) detail(hit.dataset.id);
+});
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
+
+async function load() {
+  try {
+    const res = await fetch("/api/snapshot", { cache: "no-store" });
+    data = await res.json();
+    $("live").style.background = "var(--ok)";
+    render();
+  } catch {
+    $("live").style.background = "var(--bad)";
+  }
+}
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

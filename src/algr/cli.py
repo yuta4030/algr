@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from algr import __version__, stats
+from algr import __version__, stats, ui
 from algr.adapters import AdapterError, Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
@@ -33,6 +33,7 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
   algr watch                                        # keep ticking until Ctrl-C (the resident process)
+  algr ui                                           # see the flow in a browser (http://127.0.0.1:8765)
 """
 
 INIT_CONFIG = """\
@@ -152,6 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("decline", help="decline a rule proposal")
     p.add_argument("proposal_id")
     sub.add_parser("stats", help="return rates, STP rate and human interventions from the event log")
+    p = sub.add_parser("ui", help="serve a page that shows tasks, progress and stats on 127.0.0.1 (Ctrl-C to stop)")
+    p.add_argument("--port", type=int, default=8765)
     return parser
 
 
@@ -202,6 +205,16 @@ def run(args: argparse.Namespace) -> Any:
                 print(json.dumps(e.to_dict(), ensure_ascii=False) if args.json else f"{e.task_id} {e.name}", flush=True)
 
         engine.watch(interval=args.interval, on_events=show)
+        return None
+    if args.command == "ui":
+        httpd = ui.server(engine, args.port)
+        print(f"http://127.0.0.1:{httpd.server_address[1]}/", flush=True)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            httpd.server_close()
         return None
     if args.command == "proposals":
         return {"proposals": engine.decisions.proposals()}
