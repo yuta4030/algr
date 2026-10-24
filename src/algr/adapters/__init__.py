@@ -26,6 +26,10 @@ class Context:
         return p if p.is_absolute() else self.root / p
 
 
+class AdapterError(Exception):
+    """アダプタが外部の操作に失敗した。CLI は終了コード 1 で知らせる。"""
+
+
 class Conflict(Exception):
     """保存しようとしたタスクが、読んだあとにほかの処理で書き換えられていた。読み直してやり直す。"""
 
@@ -122,7 +126,19 @@ class DecisionStore(Protocol):
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None: ...
 
     def propose(self, rule: str, source: str) -> str:
-        """1 行ルールの追加を提案し、提案の ID を返す。マージ（人の確認）をもってルールになる。"""
+        """1 行ルールの追加を提案し、提案の ID を返す。マージ（人の確認）をもってルールになる。同じ提案は二重に出さない。"""
+        ...
+
+    def proposals(self) -> list[dict[str, str]]:
+        """まだ受け入れも却下もされていない提案（{"id", "rule", "source"}）。"""
+        ...
+
+    def accept(self, proposal_id: str) -> str:
+        """人が提案を受け入れてルールにし、ルールの ID を返す。"""
+        ...
+
+    def reject_proposal(self, proposal_id: str) -> None:
+        """人が提案を却下する。"""
         ...
 
 

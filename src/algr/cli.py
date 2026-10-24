@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from algr import __version__, stats
-from algr.adapters import Conflict
+from algr.adapters import AdapterError, Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
 from algr.flow import TransitionError
@@ -143,6 +143,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
     p.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
     sub.add_parser("rules", help="list the rules from the decision store")
+    sub.add_parser("proposals", help="list rule proposals from the distill agent")
+    p = sub.add_parser("accept", help="accept a rule proposal")
+    p.add_argument("proposal_id")
+    p = sub.add_parser("decline", help="decline a rule proposal")
+    p.add_argument("proposal_id")
     sub.add_parser("stats", help="return rates, STP rate and human interventions from the event log")
     return parser
 
@@ -187,6 +192,13 @@ def run(args: argparse.Namespace) -> Any:
         return {"events": [e.to_dict() for e in engine.run(interval=args.interval, timeout=args.timeout)]}
     if args.command == "stats":
         return {"stats": stats.summarize(stats.load(engine.event_log))} if engine.event_log else {"stats": {}}
+    if args.command == "proposals":
+        return {"proposals": engine.decisions.proposals()}
+    if args.command == "accept":
+        return {"rules": [{"id": engine.decisions.accept(args.proposal_id), "text": "accepted " + args.proposal_id}]}
+    if args.command == "decline":
+        engine.decisions.reject_proposal(args.proposal_id)
+        return {"proposals": engine.decisions.proposals()}
     if args.command == "rules":
         return {"rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]}
     raise AssertionError(args.command)
@@ -209,6 +221,8 @@ def _to_text(value: Any) -> str:
         return "\n".join(f"{e['task_id']} {e['name']}" for e in value["events"])
     if "stats" in value:
         return "\n".join(f"{k}: {'-' if v is None else v}" for k, v in value["stats"].items())
+    if "proposals" in value:
+        return "\n".join(f"{p['id']} {p['rule']} (from {p['source']})" for p in value["proposals"])
     if "rules" in value:
         return "\n".join(f"{r['id']} {r['text']}" for r in value["rules"])
     if "created" in value:
@@ -220,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = run(args)
-    except (ConfigError, TransitionError, Conflict, KeyError, TimeoutError) as e:
+    except (ConfigError, TransitionError, Conflict, AdapterError, KeyError, TimeoutError) as e:
         message = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
         if args.json:
             print(json.dumps({"error": message}, ensure_ascii=False), file=sys.stderr)

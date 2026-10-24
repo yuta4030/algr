@@ -29,6 +29,8 @@ algr run                                           # 起票 → 実装 → レ�
 algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
+algr proposals                                     # 蒸留エージェントのルール提案
+algr accept P001                                   # 提案をルールにする（algr decline で却下）
 ```
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
@@ -159,13 +161,27 @@ max_tokens = 20000
 | `task` | タスクの読み書きとコメント | `fake.tasks`：1 件 1 ファイルの JSON |
 | `trigger` | 外部のイベントをフローのイベントに変換する | `fake.inbox`：ディレクトリに置いた JSON |
 | `executor` | エージェントをジョブとして起動する（`start(job)` / `status(job_id)` / `capacity()`） | `fake.process`：ローカルのコマンド |
-| `decisions` | ルールの提示、判断の記録と集計（k2down 互換の操作） | `fake.rules`：rules.json と usage.jsonl |
+| `decisions` | ルールの提示、判断の記録と集計、ルールの提案（k2down 互換の操作） | `fake.rules`：rules.json と usage.jsonl。`k2down`：k2down の CLI |
 | `notify` | 人の判断待ちを届ける | `stub`：ファイルに追記 |
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。
 結果に `"usage": {"input_tokens", "output_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、`algr stats` の `tokens_per_task` に出します。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。
+
+### k2down
+
+判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。
+
+```toml
+[adapters.decisions]
+use = "k2down"
+dir = ".algr/decisions"                 # rules.json と usage.jsonl を置くところ（k2down の --dir）
+command = ["k2down"]                    # 省略時。uvx で動かすなら ["uvx", "--from", "git+https://github.com/yuta4030/k2down", "k2down"]
+```
+
+蒸留エージェントの提案は `.algr/state/proposals.json` に積み、`algr accept` したときに `k2down add` で rules.json に書きます。
+rules.json の差分を PR にしてマージすることを、人の確認とします。
 
 ## 開発
 

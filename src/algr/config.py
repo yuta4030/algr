@@ -39,6 +39,7 @@ BUILTIN_ADAPTERS = {
     "fake.process": "algr.adapters.fake:LocalProcess",
     "fake.rules": "algr.adapters.fake:RuleFile",
     "stub": "algr.adapters.fake:StubNotifier",
+    "k2down": "algr.adapters.k2down:K2down",
 }
 
 

@@ -266,6 +266,13 @@ class RuleFile:
         _write_json(self.dir / "rules.json", data)
         return self.add(proposal["rule"])
 
+    def reject_proposal(self, proposal_id: str) -> None:
+        data = self._load()
+        if not any(p["id"] == proposal_id for p in data["proposals"]):
+            raise KeyError(f"no such proposal: {proposal_id}")
+        data["proposals"] = [p for p in data["proposals"] if p["id"] != proposal_id]
+        _write_json(self.dir / "rules.json", data)
+
 
 class StubNotifier:
     """通知のスタブ。送る代わりにファイルへ追記する。"""
