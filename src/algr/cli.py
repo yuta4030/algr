@@ -27,7 +27,8 @@ Humans only see needs-decision and failed.
   algr new "Add login" --question "auth: How do users sign in?"
   algr list --state needs-decision
   algr answer I1 I1-1="OAuth"
-  algr tick                                         # take in triggers, poll runs, dispatch ready tasks
+  algr tick                                         # take in triggers, collect job results, start jobs
+  algr run                                          # tick until no job is running
 """
 
 INIT_CONFIG = """\
@@ -35,7 +36,7 @@ INIT_CONFIG = """\
 # use には組み込み名（fake.tasks など）、'pkg.module:Name'、'.algr/adapters/x.py:Name' を書ける。
 
 [flow]
-max_parallel = 1  # 同時に走らせる実装エージェントの上限
+max_parallel = 1  # 同時に in-progress にするタスクの数
 
 [adapters.task]
 use = "fake.tasks"
@@ -46,7 +47,8 @@ use = "fake.inbox"
 
 [adapters.executor]
 use = "fake.process"
-command = ["true"]  # 実装エージェントの代わりに走らせるコマンド
+max_parallel = 2  # 起票・実装・レビュー・蒸留のジョブを同時に走らせる数
+# command = ["claude", "-p", "..."]  # 省略するとフェイクのエージェント（python -m algr.fake_agent）
 
 [adapters.decisions]
 use = "fake.rules"
@@ -54,11 +56,6 @@ dir = ".algr/decisions"
 
 [adapters.notify]
 use = "stub"
-
-[agents]
-intake = "fake"
-review = "fake"
-distill = "fake"
 
 [hooks]
 # "task.done" = [".algr/hooks.py:on_done"]
@@ -78,6 +75,9 @@ def _task_text(task: Task) -> str:
         else:
             grounds = f" [{' '.join(q.rule_ids)}]" if q.rule_ids else f" [{q.by}]"
             lines.append(f"  = {q.id} {q.text} -> {q.answer}{grounds}")
+    for d in task.decisions:
+        grounds = f" [{' '.join(d.rule_ids)}]" if d.rule_ids else " [agent]"
+        lines.append(f"  * {d.id} {d.text} -> {d.answer}{grounds}")
     return "\n".join(lines)
 
 
@@ -121,7 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("answers", nargs="+", type=_answer, metavar="QUESTION_ID=ANSWER")
 
-    sub.add_parser("tick", help="take in triggers, poll runs and dispatch ready tasks once")
+    sub.add_parser("tick", help="take in triggers, collect job results and start jobs once")
+    p = sub.add_parser("run", help="tick until no job is running")
+    p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
+    p.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
     sub.add_parser("rules", help="list the rules from the decision store")
     return parser
 
@@ -158,6 +161,8 @@ def run(args: argparse.Namespace) -> Any:
         return engine.resolve(args.task_id, dict(args.answers))
     if args.command == "tick":
         return {"events": [e.to_dict() for e in engine.tick()]}
+    if args.command == "run":
+        return {"events": [e.to_dict() for e in engine.run(interval=args.interval, timeout=args.timeout)]}
     if args.command == "rules":
         return {"rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]}
     raise AssertionError(args.command)
@@ -189,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = run(args)
-    except (ConfigError, TransitionError, KeyError) as e:
+    except (ConfigError, TransitionError, KeyError, TimeoutError) as e:
         message = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
         if args.json:
             print(json.dumps({"error": message}, ensure_ascii=False), file=sys.stderr)

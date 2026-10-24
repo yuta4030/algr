@@ -23,11 +23,10 @@ DEFAULTS: dict[str, Any] = {
     "adapters": {
         "task": {"use": "fake.tasks"},
         "trigger": {"use": "fake.inbox"},
-        "executor": {"use": "fake.process", "command": ["true"]},
+        "executor": {"use": "fake.process"},
         "decisions": {"use": "fake.rules"},
         "notify": {"use": "stub"},
     },
-    "agents": {"intake": "fake", "review": "fake", "distill": "fake"},
     "hooks": {},
 }
 
@@ -37,12 +36,6 @@ BUILTIN_ADAPTERS = {
     "fake.process": "algr.adapters.fake:LocalProcess",
     "fake.rules": "algr.adapters.fake:RuleFile",
     "stub": "algr.adapters.fake:StubNotifier",
-}
-
-BUILTIN_AGENTS = {
-    "intake": {"fake": "algr.agents:FakeIntake"},
-    "review": {"fake": "algr.agents:FakeReview"},
-    "distill": {"fake": "algr.agents:FakeDistill"},
 }
 
 
@@ -135,9 +128,6 @@ class Config:
         if not isinstance(adapter, KINDS[kind]):
             raise ConfigError(f"adapters.{kind}: {type(adapter).__name__} does not implement {KINDS[kind].__name__}")
         return adapter
-
-    def agent(self, role: str) -> Any:
-        return self.resolve(self.data["agents"][role], BUILTIN_AGENTS[role])()
 
     def hooks(self) -> dict[str, list[Any]]:
         return {event: [self.resolve(spec, {}) for spec in specs] for event, specs in self.data["hooks"].items()}

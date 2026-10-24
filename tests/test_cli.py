@@ -25,24 +25,30 @@ def test_init(tmp_path, home, capsys):
 def test_new_answer_and_list(algr):
     code, task, _ = algr("new", "Add login", "-q", "auth: How do users sign in?", "-q", "plain question")
     assert code == 0
-    assert task["state"] == "needs-decision"
+    assert task["state"] == "intake"
     assert [(q["topic"], q["text"]) for q in task["questions"]] == [("auth", "How do users sign in?"), ("", "plain question")]
 
-    code, task, _ = algr("answer", "I1", "I1-1=OAuth", "I1-2=yes")
-    assert task["state"] == "ready"
+    _, data, _ = algr("run", "--interval", "0.02", "--timeout", "10")
+    assert [e["name"] for e in data["events"]] == ["decision.requested"]
 
-    code, tasks, _ = algr("list", "--state", "ready")
+    _, task, _ = algr("answer", "I1", "I1-1=OAuth", "I1-2=yes")
+    assert task["state"] == "intake"
+    algr("run", "--interval", "0.02", "--timeout", "10")
+
+    _, tasks, _ = algr("list", "--state", "done")
     assert [t["id"] for t in tasks] == ["I1"]
 
 
 def test_text_output(repo, capsys):
     main(["-C", str(repo), "new", "Add login", "-q", "auth: How?"])
-    assert capsys.readouterr().out == "I1 [needs-decision] Add login\n  ? I1-1 How?\n"
+    assert capsys.readouterr().out == "I1 [intake] Add login\n  ? I1-1 How?\n"
+    main(["-C", str(repo), "run", "--interval", "0.02"])
+    assert capsys.readouterr().out == "I1 decision.requested\n"
 
 
 def test_errors(algr):
     algr("new", "t")
-    assert algr("answer", "I1", "I1-1=x")[2] == {"error": "I1 is ready, not waiting for a decision"}
+    assert algr("answer", "I1", "I1-1=x")[2] == {"error": "I1 is intake, not waiting for a decision"}
     assert algr("show", "I9")[2] == {"error": "no such task: I9"}
 
 

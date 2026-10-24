@@ -11,7 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from algr.model import Event, State, Task
+from algr.model import Event, Job, State, Task
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ class TriggerAdapter(Protocol):
 
 class RunState(StrEnum):
     RUNNING = "running"
-    BLOCKED = "blocked"
+    BLOCKED = "blocked"  # エージェントが人を待っている。attach を持つアダプタなら人が入って答えられる
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -62,18 +62,26 @@ class RunState(StrEnum):
 @dataclass
 class RunStatus:
     state: RunState
-    # 完了時の結果。{"pr": str, "decisions": [...]} か {"returned": {"text": ..., "topic": ...}}
+    # 完了時の結果。形は役ごとに決まっている（algr.agents を参照）
     result: dict[str, Any] = field(default_factory=dict)
     message: str = ""
 
 
 @runtime_checkable
 class ExecutorAdapter(Protocol):
-    """実装エージェントを起動する。attach(task) と stop(task) は任意。"""
+    """エージェントを起動する。起票・実装・レビュー・蒸留のどれもジョブとしてここから起動する。
 
-    def start(self, task: Task) -> None: ...
+    エージェントは数分から数十分かかるので、start はすぐ返し、結果は status で受け取る。
+    attach(job_id) と stop(job_id) は任意。
+    """
 
-    def status(self, task: Task) -> RunStatus: ...
+    def start(self, job: Job) -> None:
+        """job を起動する。同じ job.id で二度呼ばれても二重に起動しない。"""
+        ...
+
+    def status(self, job_id: str) -> RunStatus:
+        """知らない job_id には FAILED を返す。"""
+        ...
 
     def capacity(self) -> int:
         """いま追加で起動できる数。同時実行数の上限はコアの設定で持つ。"""
@@ -93,6 +101,10 @@ class DecisionStore(Protocol):
     def rules(self) -> list[Rule]: ...
 
     def apply(self, decision: str, problem: str, rule_ids: list[str]) -> None: ...
+
+    def reject(self, decision: str, problem: str, rule_ids: list[str]) -> None:
+        """当てたルールが、この問題には当てはまらなかったと記録する。"""
+        ...
 
     def escalate(self, decision: str, problem: str, reason: str, rule_ids: list[str] | None = None) -> None: ...
 

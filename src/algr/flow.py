@@ -23,7 +23,7 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "task.submitted": (frozenset({S.IN_PROGRESS}), S.REVIEW),
     "review.escalated": (frozenset({S.REVIEW}), S.NEEDS_DECISION),
     "task.done": (frozenset({S.REVIEW}), S.DONE),
-    "task.failed": (frozenset({S.IN_PROGRESS, S.REVIEW}), S.FAILED),
+    "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW}), S.FAILED),
 }
 
 EVENTS = tuple(TRANSITIONS)
@@ -52,19 +52,19 @@ def _has_pr(task: Task) -> str | None:
     return None
 
 
-def _decisions_have_grounds(task: Task) -> str | None:
-    """判断には根拠を付ける：エージェントが決めた点には、従ったルールが必ずある。"""
+def _fills_have_grounds(task: Task) -> str | None:
+    """判断には根拠を付ける：ルールで埋まった未決事項には、従ったルールが必ずある。"""
     for q in task.questions:
         if q.by == "rule" and not q.rule_ids:
-            return f"{task.id} decided {q.id} by rule without citing one"
+            return f"{task.id} filled {q.id} by rule without citing one"
     return None
 
 
 INVARIANTS: dict[str, tuple[Callable[[Task], str | None], ...]] = {
     "decision.requested": (_has_open_questions,),
-    "task.ready": (_no_open_questions, _decisions_have_grounds),
+    "task.ready": (_no_open_questions, _fills_have_grounds),
     "task.returned": (_has_open_questions,),
-    "task.submitted": (_has_pr, _decisions_have_grounds),
+    "task.submitted": (_has_pr,),
     "review.escalated": (_has_open_questions,),
     "task.done": (_has_pr, _no_open_questions),
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from algr.adapters import Context, Rule, RunState, RunStatus
-from algr.model import Event, State, Task
+from algr.model import Event, Job, State, Task
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -92,35 +93,37 @@ class InboxTrigger:
 
 
 class LocalProcess:
-    """実装エージェントの代わりにローカルのコマンドを走らせる。
+    """エージェントの代わりにローカルのコマンドを走らせる。
 
-    コマンドには環境変数 ALGR_TASK_ID / ALGR_TASK_FILE / ALGR_RESULT_FILE が渡る。
-    コマンドは ALGR_RESULT_FILE に {"pr": "...", "decisions": [...]} か
-    {"returned": {"text": "...", "topic": "..."}} を書いて終了する。
-    algr の起動をまたいでも状態を追えるよう、終了コードはファイルに残す。
+    コマンドには環境変数 ALGR_JOB_ID / ALGR_ROLE / ALGR_JOB_FILE / ALGR_RESULT_FILE が渡る。
+    ALGR_JOB_FILE には {"id", "role", "task", "input"} が入っている。
+    コマンドは ALGR_RESULT_FILE に役ごとの結果（algr.agents を参照）を JSON で書いて終了する。
+    algr の起動をまたいでも状態を追えるよう、pid と終了コードはファイルに残す。
     """
 
-    def __init__(self, ctx: Context, command: list[str], max_parallel: int = 1, dir: str = ".algr/state/runs") -> None:
+    def __init__(
+        self, ctx: Context, command: list[str] | None = None, max_parallel: int = 1, dir: str = ".algr/state/runs"
+    ) -> None:
         self.ctx = ctx
-        self.command = list(command)
+        # 既定はフェイクのエージェント。AI を使わず決まりで判断する
+        self.command = list(command) if command else [sys.executable, "-m", "algr.fake_agent"]
         self.max_parallel = max_parallel
         self.dir = ctx.path(dir)
 
-    def _run_dir(self, task: Task) -> Path:
-        return self.dir / task.id
+    def _run_dir(self, job_id: str) -> Path:
+        return self.dir / job_id
 
-    def start(self, task: Task) -> None:
-        run = self._run_dir(task)
-        if (run / "pid").exists() and not (run / "exit").exists():
-            return  # 冪等：走っているものは起動し直さない
+    def start(self, job: Job) -> None:
+        run = self._run_dir(job.id)
+        if (run / "pid").exists():
+            return  # 冪等：一度起動したジョブは起動し直さない
         run.mkdir(parents=True, exist_ok=True)
-        for name in ("exit", "result.json"):
-            (run / name).unlink(missing_ok=True)
-        _write_json(run / "task.json", task.to_dict())
+        _write_json(run / "job.json", job.to_dict())
         env = {
             **os.environ,
-            "ALGR_TASK_ID": task.id,
-            "ALGR_TASK_FILE": str(run / "task.json"),
+            "ALGR_JOB_ID": job.id,
+            "ALGR_ROLE": str(job.role),
+            "ALGR_JOB_FILE": str(run / "job.json"),
             "ALGR_RESULT_FILE": str(run / "result.json"),
         }
         proc = subprocess.Popen(
@@ -133,34 +136,53 @@ class LocalProcess:
         )
         (run / "pid").write_text(str(proc.pid), encoding="utf-8")
 
-    def status(self, task: Task) -> RunStatus:
-        run = self._run_dir(task)
+    def _alive(self, run: Path) -> bool:
+        pid = int((run / "pid").read_text(encoding="utf-8"))
+        try:
+            # 自分が起動したプロセスなら刈り取る。刈り取らないとゾンビとして生きて見え続ける
+            if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                return False
+        except ChildProcessError:
+            pass  # 別の algr の起動で始めたプロセス
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def status(self, job_id: str) -> RunStatus:
+        run = self._run_dir(job_id)
         if not (run / "pid").exists():
             return RunStatus(RunState.FAILED, message="not started")
         if not (run / "exit").exists():
-            return RunStatus(RunState.RUNNING)
+            if self._alive(run):
+                return RunStatus(RunState.RUNNING)
+            if not (run / "exit").exists():  # 生死を見るあいだに終わった場合を除く
+                return RunStatus(RunState.FAILED, message="lost")  # 再起動などで、終了コードを残さずに消えた
+        self._alive(run)  # 終わった包みを刈り取っておく
         code = int((run / "exit").read_text(encoding="utf-8").strip())
         result_path = run / "result.json"
         result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
         if code != 0 or not result:
             return RunStatus(RunState.FAILED, result, message=f"exit {code}")
-        if "returned" in result:
-            return RunStatus(RunState.BLOCKED, result)
         return RunStatus(RunState.COMPLETED, result)
 
     def running(self) -> int:
         if not self.dir.exists():
             return 0
-        return sum(1 for run in self.dir.iterdir() if (run / "pid").exists() and not (run / "exit").exists())
+        return sum(1 for run in self.dir.iterdir() if (run / "pid").exists() and not (run / "exit").exists() and self._alive(run))
 
     def capacity(self) -> int:
         return max(0, self.max_parallel - self.running())
 
-    def stop(self, task: Task) -> None:
-        run = self._run_dir(task)
+    def stop(self, job_id: str) -> None:
+        run = self._run_dir(job_id)
         if (run / "pid").exists() and not (run / "exit").exists():
             try:
-                os.kill(int((run / "pid").read_text(encoding="utf-8")), 15)
+                # 包みはセッションの頭なので、その下のエージェントごと止める
+                os.killpg(int((run / "pid").read_text(encoding="utf-8")), signal.SIGTERM)
             except ProcessLookupError:
                 pass
             (run / "exit").write_text("143", encoding="utf-8")
@@ -170,7 +192,7 @@ class RuleFile:
     """1 行ルールと判断の記録をファイルで持つ。k2down の代わりに使うフェイクの判断ストア。
 
     rules.json に {"rules": [{"id", "text"}], "proposals": [{"id", "rule", "source"}]}、
-    usage.jsonl に apply / escalate / decide / propose の記録を追記する。
+    usage.jsonl に apply / reject / escalate / decide / propose の記録を追記する。
     """
 
     def __init__(self, ctx: Context, dir: str = ".algr/decisions") -> None:
@@ -203,6 +225,9 @@ class RuleFile:
 
     def apply(self, decision: str, problem: str, rule_ids: list[str]) -> None:
         self._log("applied", decision=decision, problem=problem, rule_ids=rule_ids)
+
+    def reject(self, decision: str, problem: str, rule_ids: list[str]) -> None:
+        self._log("rejected", decision=decision, problem=problem, rule_ids=rule_ids)
 
     def escalate(self, decision: str, problem: str, reason: str, rule_ids: list[str] | None = None) -> None:
         self._log("escalated", decision=decision, problem=problem, reason=reason, rule_ids=rule_ids or [])

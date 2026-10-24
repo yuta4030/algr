@@ -11,7 +11,7 @@ import pytest
 from algr.config import Config
 from algr.engine import Engine
 
-IMPLEMENTER = Path(__file__).with_name("fake_implementer.py")
+AGENT = Path(__file__).with_name("fake_agent.py")
 
 
 def write_config(root: Path, extra: str = "") -> None:
@@ -23,8 +23,8 @@ max_parallel = 2
 
 [adapters.executor]
 use = "fake.process"
-command = {json.dumps([sys.executable, str(IMPLEMENTER)])}
-max_parallel = 2
+command = {json.dumps([sys.executable, str(AGENT)])}
+max_parallel = 4
 {extra}
 """,
         encoding="utf-8",
@@ -51,10 +51,14 @@ def engine(repo) -> Engine:
 
 
 def run_until(engine: Engine, done: Callable[[], bool], timeout: float = 10.0) -> None:
-    """tick を回し、done が真になるまで待つ。実装エージェントは別プロセスで走る。"""
+    """tick を回し、done が真になるまで待つ。エージェントは別プロセスで走る。"""
     deadline = time.monotonic() + timeout
     while not done():
         if time.monotonic() > deadline:
             raise AssertionError("timed out: " + " ".join(f"{t.id}:{t.state}" for t in engine.tasks.list()))
         engine.tick()
         time.sleep(0.02)
+
+
+def state(engine: Engine, task_id: str) -> str:
+    return str(engine.tasks.get(task_id).state)
