@@ -22,12 +22,14 @@ from algr.model import State, Task
 DESCRIPTION = """\
 algr: a flow for Algorithmic Development.
 Rules fill in decisions at intake; ready tasks flow through implementation and review to merge.
-Humans only see needs-decision and failed.
+Humans only see needs-decision and failed (and approved tasks when merge is gated).
 
   algr init                                         # write .algr/config.toml with fake adapters
   algr new "Add login" --question "auth: How do users sign in?"
   algr list --state needs-decision
   algr answer I1 I1-1="OAuth"
+  algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
+  algr merge I1                                     # merge an approved task (flow.merge = "human")
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
 """
@@ -38,6 +40,8 @@ INIT_CONFIG = """\
 
 [flow]
 max_parallel = 1  # 同時に in-progress にするタスクの数
+max_rework = 2    # レビューの修正依頼で実装に戻す回数の上限。超えたら failed
+merge = "auto"    # "human" にすると、レビューが通ったあと algr merge を待つ
 
 [adapters.task]
 use = "fake.tasks"
@@ -64,7 +68,8 @@ use = "stub"
 
 
 def _task_text(task: Task) -> str:
-    lines = [f"{task.id} [{task.state}] {task.title}"]
+    status = f"{task.state}, approved" if task.approved else str(task.state)
+    lines = [f"{task.id} [{status}] {task.title}"]
     if task.purpose:
         lines.append(f"  purpose: {task.purpose}")
     if task.pr:
@@ -79,6 +84,8 @@ def _task_text(task: Task) -> str:
     for d in task.decisions:
         grounds = f" [{' '.join(d.rule_ids)}]" if d.rule_ids else " [agent]"
         lines.append(f"  * {d.id} {d.text} -> {d.answer}{grounds}")
+    for change in task.feedback:
+        lines.append(f"  ! {change}")
     return "\n".join(lines)
 
 
@@ -121,6 +128,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("answers", nargs="+", type=_answer, metavar="QUESTION_ID=ANSWER")
 
+    p = sub.add_parser("reopen", help="send a failed task back to intake")
+    p.add_argument("task_id")
+    p.add_argument("--note", default="")
+
+    p = sub.add_parser("merge", help="merge an approved task waiting at the merge gate")
+    p.add_argument("task_id")
+
     sub.add_parser("tick", help="take in triggers, collect job results and start jobs once")
     p = sub.add_parser("run", help="tick until no job is running")
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
@@ -158,6 +172,10 @@ def run(args: argparse.Namespace) -> Any:
         return engine.tasks.get(args.task_id)
     if args.command == "answer":
         return engine.resolve(args.task_id, dict(args.answers))
+    if args.command == "reopen":
+        return engine.reopen(args.task_id, args.note)
+    if args.command == "merge":
+        return engine.merge(args.task_id)
     if args.command == "tick":
         return {"events": [e.to_dict() for e in engine.tick()]}
     if args.command == "run":

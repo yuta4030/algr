@@ -8,7 +8,8 @@
              fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
 - implement：{"pr": str, "decisions": [{"text", "answer", "topic"?, "rule_ids"?}]}
              想定外の判断が出たら、勝手に決めずに {"returned": {"text", "topic"?, "recommended"?}}
-- review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}}
+- review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
+             objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
 - distill：  {"rules": [{"rule", "source"}]}
 """
 
@@ -49,6 +50,7 @@ class ImplementResult:
 class ReviewResult:
     approved: bool
     objections: dict[str, str] = field(default_factory=dict)  # 決断 ID → 理由
+    changes: list[str] = field(default_factory=list)  # 判断以外の修正依頼
 
 
 @dataclass
@@ -59,6 +61,13 @@ class DistillResult:
 def job_input(role: Role, task: Task, rules: list[Rule]) -> dict[str, Any]:
     """ジョブに添える入力。エージェントは自分で判断ストアを引いてもよいが、ここに今のルールを渡しておく。"""
     data: dict[str, Any] = {"rules": [{"id": r.id, "text": r.text} for r in rules]}
+    if role == Role.IMPLEMENT:
+        # やり直しは一から作らず、前の PR と指摘から差分だけ直す
+        data["previous"] = {"pr": task.pr, "decisions": [asdict(d) for d in task.decisions]}
+        data["feedback"] = list(task.feedback)
+    if role == Role.REVIEW:
+        # 人が答えた未決事項は人のゲートを通っているので、異議の対象にしない
+        data["settled"] = [q.id for q in task.questions if q.by == "human"]
     if role == Role.DISTILL:
         data["questions"] = [asdict(q) for q in task.questions if q.id in task.to_distill]
     return data
@@ -97,7 +106,10 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
         objections = data.get("objections", {})
         if not isinstance(objections, dict):
             raise ResultError("objections must be an object")
-        return ReviewResult(bool(_need(data, "approved", bool)), {str(k): str(v) for k, v in objections.items()})
+        changes = data.get("changes", [])
+        if not isinstance(changes, list) or not all(isinstance(c, str) for c in changes):
+            raise ResultError("changes must be a list of strings")
+        return ReviewResult(bool(_need(data, "approved", bool)), {str(k): str(v) for k, v in objections.items()}, changes)
     if role == Role.DISTILL:
         return DistillResult(_texts(data.get("rules", []), "rule", "source"))
     raise ResultError(f"unknown role: {role}")

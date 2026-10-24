@@ -20,7 +20,7 @@ from algr.flow import HOOK_POINTS
 CONFIG_FILE = "config.toml"
 
 DEFAULTS: dict[str, Any] = {
-    "flow": {"max_parallel": 1},
+    "flow": {"max_parallel": 1, "max_rework": 2, "merge": "auto"},
     "adapters": {
         "task": {"use": "fake.tasks"},
         "trigger": {"use": "fake.inbox"},
@@ -140,3 +140,15 @@ class Config:
     @property
     def max_parallel(self) -> int:
         return int(self.data["flow"]["max_parallel"])
+
+    @property
+    def max_rework(self) -> int:
+        return int(self.data["flow"]["max_rework"])
+
+    @property
+    def merge_gate(self) -> bool:
+        """レビューが通ったあと、マージに人のゲートを置くか。"""
+        value = self.data["flow"]["merge"]
+        if value not in ("auto", "human"):
+            raise ConfigError(f"flow.merge must be 'auto' or 'human', got {value!r}")
+        return value == "human"

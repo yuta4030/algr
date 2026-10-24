@@ -56,3 +56,9 @@ def test_config_shows_sources(algr, repo):
     _, data, _ = algr("config")
     assert data["root"] == str(repo.resolve())
     assert data["config"]["flow"]["max_parallel"] == 2
+
+
+def test_reopen_and_merge(algr):
+    algr("new", "t")
+    assert algr("reopen", "I1")[2] == {"error": "I1 is intake, not failed"}
+    assert algr("merge", "I1")[2] == {"error": "I1 is not approved and waiting for merge"}

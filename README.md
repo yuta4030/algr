@@ -26,6 +26,8 @@ algr run                                           # 走っているジョブが
 algr list --state needs-decision
 algr answer I1 I1-1="OAuth"                        # 答えると起票に戻る
 algr run                                           # 起票 → 実装 → レビュー → マージ
+algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
+algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
 ```
 
 `algr tick` は 1 周だけ回します（トリガーを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する）。
@@ -37,12 +39,15 @@ algr run                                           # 起票 → 実装 → レ�
 タスクは 7 つの状態を移り、遷移ごとにイベントが 1 つ出ます。イベントがそのまま hook の差し込み口です。
 
 ```text
-主経路   intake ─▶ ready ─▶ in-progress ─▶ review ─▶ done
-人に聞く intake / in-progress / review ─▶ needs-decision ─▶ intake
-失敗     intake / in-progress / review ─▶ failed
+主経路     intake ─▶ ready ─▶ in-progress ─▶ review ─▶ done
+人に聞く   intake / review ─▶ needs-decision ─▶ intake
+差し戻し   in-progress ─▶ intake（起票エージェントがルールを当て、埋まらなければ人に聞く）
+修正依頼   review ─▶ in-progress（flow.max_rework 回まで。超えたら failed）
+失敗       intake / in-progress / review ─▶ failed ─▶ intake（人が reopen する）
 ```
 
-人が関わるのは needs-decision と failed だけです。人が答えると必ず起票に戻り、そこから主経路に合流します。
+人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の承認済みの review だけです。
+人が答えると必ず起票に戻り、そこから主経路に合流します。人に聞くときは必ず通知します。
 
 イベント名とペイロード（`Event.data`）の形は固定です（`src/algr/flow.py` の `TRANSITIONS` と `EVENT_DATA`）。
 どのイベントにも遷移元の状態 `from` が付き（`task.created` は `""`）、決断 ID の並びは必ず `questions` で渡します。
@@ -50,15 +55,22 @@ algr run                                           # 起票 → 実装 → レ�
 | イベント | ペイロード | 既定の処理 |
 |---|---|---|
 | `task.created` | `source`（`human` / `auto`） | 起票エージェントを起動する |
-| `decision.requested` | `channel`（`inline` / `queue`）、`questions` | 非同期（`queue`）のときだけ通知する |
+| `decision.requested` | `channel`（`inline` / `queue`）、`questions` | 人に知らせる（channel は聞き方の違いだけ） |
 | `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントと蒸留エージェントを起動する |
 | `task.ready` | — | 配車を待つ |
 | `task.started` | — | 実装エージェントを起動する |
-| `task.returned` | `questions` | 人に知らせる |
+| `task.returned` | `questions` | 起票エージェントを起動する（ルールで埋まらなければ人に聞く） |
 | `task.submitted` | `pr` | レビューエージェントを起動する |
+| `review.changes_requested` | `changes`（修正依頼） | 実装エージェントを起動する（前の PR と指摘を渡す） |
 | `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
-| `task.done` | `pr` | ルールに従った判断を hit として記録する |
+| `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録する |
 | `task.failed` | `role`、`message` | 人に上げる |
+| `task.reopened` | `note` | 起票エージェントを起動する |
+
+レビューが通ると、既定ではそのまま `task.done` になります。`flow.merge = "human"` にすると、タスクは承認済み（`approved`）のまま review に留まり、
+人に知らせて `algr merge`（またはトリガーの `task.done`）を待ちます。人が答えた未決事項は人のゲートを通っているので、再レビューで異議が出ても蒸し返しません。
+
+トリガーが外から送れるのは、人の操作と同じ `task.created` / `decision.resolved` / `task.reopened` / `task.done` だけです。
 
 ### hook
 
@@ -76,7 +88,10 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 タスクは 2 種類の判断を別々に持ちます。どちらも決断 ID（`I1-1`）をタスク内で通し番号で振ります。
 
 - **未決事項**（`questions`）：起票で埋めるもの。ルールで埋まるか、人が答える
-- **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか、根拠なく決めたか。実装をやり直すと捨てられる
+- **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
+
+タスクの保存は楽観ロックです。`TaskAdapter.save` は読んだときの版（`version`）と保存済みの版が違えば `Conflict` を投げ、
+エンジンはそのタスクを次の tick で読み直してやり直します。
 
 ## エージェント
 
@@ -88,8 +103,12 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 |---|---|---|
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
-| `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}}` |
+| `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
 | `distill` | 人が答えた未決事項がある時 | `{"rules": [{"rule", "source"}]}` |
+
+`objections` は判断への異議で、人に回します。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
+ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
+レビューには人が決めた未決事項の ID（`settled`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
 
 結果の形が違えば、ジョブは失敗として扱います。形の定義は `src/algr/agents.py` にあります。
 
@@ -100,6 +119,8 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 ```toml
 [flow]
 max_parallel = 1                        # 同時に in-progress にするタスクの数
+max_rework = 2                          # レビューの修正依頼で実装に戻す回数の上限
+merge = "auto"                          # "human" でマージに人のゲートを置く
 
 [adapters.task]
 use = "fake.tasks"                      # 組み込み名

@@ -20,7 +20,7 @@ def test_loop_goes_around_once(engine):
     run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
     task = engine.tasks.get("I1")
     assert [q.id for q in task.open_questions()] == ["I1-1"]
-    assert engine.notifier.sent() == []  # 同期の起票はその場で聞くので通知しない
+    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision: I1-1"}]  # 人に聞くときは必ず知らせる
 
     # 人が答えると起票に戻り、ready になる。蒸留エージェントが判断をルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
@@ -92,8 +92,9 @@ def test_returned_during_implementation(engine):
     task = engine.tasks.get("I1")
     assert task.open_questions()[0].text == "Which database?"
     assert task.open_questions()[0].recommended == "sqlite"
-    assert "task.returned" in names(engine, "I1")
-    assert engine.notifier.sent()[-1]["message"].startswith("I1 was returned")
+    # 差し戻しは起票に戻り、ルールで埋まらないので人に上がる
+    assert names(engine, "I1")[-3:] == ["task.started", "task.returned", "decision.requested"]
+    assert engine.notifier.sent()[-1]["message"] == "I1 needs a decision: I1-1"
 
     engine.resolve("I1", {"I1-1": "sqlite"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
@@ -249,3 +250,59 @@ def test_stale_save_is_rejected(engine):
     with pytest.raises(Conflict):
         engine.tasks.save(stale)
     assert engine.tasks.get("I1").purpose == "changed elsewhere"
+
+
+def test_returned_question_is_filled_by_rule_before_asking(engine):
+    engine.decisions.add("db: postgres")
+    engine.create("Store sessions needs-db")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert "decision.requested" not in names(engine, "I1")
+    q = engine.tasks.get("I1").question("I1-1")
+    assert (q.answer, q.by) == ("postgres", "rule")
+
+
+def test_review_requests_changes_and_implement_fixes(engine):
+    engine.create("fixme")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert names(engine, "I1")[-4:] == ["task.submitted", "review.changes_requested", "task.submitted", "task.done"]
+    task = engine.tasks.get("I1")
+    assert (task.pr, task.reworks, task.feedback) == ("pr/I1-fixed", 1, [])
+
+
+def test_rework_has_a_limit(engine):
+    engine.max_rework = 1
+    engine.create("nitpick")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert names(engine, "I1").count("review.changes_requested") == 1
+    assert engine.notifier.sent()[-1]["message"].startswith("I1 failed: review asked for changes more than 1 times")
+
+
+def test_human_reopens_a_failed_task(engine, repo):
+    engine.create("flaky")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    (repo / "flaky-ok").write_text("", encoding="utf-8")
+    engine.reopen("I1", note="fixed the runner")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    reopened = [e for e in engine.events if e.name == "task.reopened"]
+    assert reopened[0].data == {"from": "failed", "note": "fixed the runner"}
+
+
+def test_human_settled_questions_are_not_reopened_by_review(engine):
+    engine.create("contrarian", questions=[{"text": "Which?", "topic": "x"}])
+    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    engine.resolve("I1", {"I1-1": "this"})
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert "review.escalated" not in names(engine, "I1")
+
+
+def test_merge_gate_waits_for_human(engine):
+    engine.merge_gate = True
+    engine.create("gated")
+    run_until(engine, lambda: engine.tasks.get("I1").approved)
+    engine.tick()
+    task = engine.tasks.get("I1")
+    assert (task.state, task.jobs) == (State.REVIEW, {})  # 承認済みのあいだはレビューを起動し直さない
+    assert engine.notifier.sent()[-1]["message"] == "I1 is approved and waiting for merge: pr/I1"
+    engine.merge("I1")
+    assert state(engine, "I1") == State.DONE
+    assert engine.events[-1].data == {"from": "review", "pr": "pr/I1", "merged_by": "human"}

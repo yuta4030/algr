@@ -18,11 +18,14 @@ from algr import flow
 from algr.adapters import Conflict, DecisionStore, ExecutorAdapter, Notifier, RunState, RunStatus, TaskAdapter, TriggerAdapter
 from algr.agents import DistillResult, ImplementResult, IntakeResult, ResultError, ReviewResult, job_input, parse
 from algr.config import Config
-from algr.model import Channel, Event, Job, Question, Role, State, Task
+from algr.model import Event, Job, Question, Role, State, Task
 
 Hook = Callable[[Event, "Engine"], Any]
 
 # 状態ごとに、その状態を先へ進めるエージェントの役
+# トリガーが外から送れるイベント。人の操作（起票、回答、やり直し、マージ）と同じ入口を通る
+EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.done")
+
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
 
 
@@ -46,6 +49,8 @@ class Engine:
         notifier: Notifier,
         hooks: dict[str, list[Hook]] | None = None,
         max_parallel: int = 1,
+        max_rework: int = 2,
+        merge_gate: bool = False,
         event_log: Path | None = None,
     ) -> None:
         self.tasks = tasks
@@ -55,6 +60,8 @@ class Engine:
         self.notifier = notifier
         self.hooks = hooks or {}
         self.max_parallel = max_parallel
+        self.max_rework = max_rework
+        self.merge_gate = merge_gate
         self.event_log = event_log
         self.events: list[Event] = []
         self._pending: deque[Event] = deque()
@@ -73,6 +80,8 @@ class Engine:
             notifier=config.adapter("notify"),
             hooks=config.hooks(),
             max_parallel=config.max_parallel,
+            max_rework=config.max_rework,
+            merge_gate=config.merge_gate,
             event_log=config.ctx.path(".algr/state/events.jsonl"),
         )
 
@@ -157,6 +166,24 @@ class Engine:
         self.emit("decision.resolved", task, questions=list(answers))
         return self.tasks.get(task_id)
 
+    def reopen(self, task_id: str, note: str = "") -> Task:
+        """人が failed のタスクを起票に戻す。修正依頼の回数は数え直す。"""
+        task = self.tasks.get(task_id)
+        if task.state != State.FAILED:
+            raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
+        task.reworks, task.approved = 0, False
+        self.emit("task.reopened", task, note=note)
+        return self.tasks.get(task_id)
+
+    def merge(self, task_id: str) -> Task:
+        """マージのゲートで、人が承認済みのタスクをマージする（マージされたと記録する）。"""
+        task = self.tasks.get(task_id)
+        if task.state != State.REVIEW or not task.approved:
+            raise flow.TransitionError(f"{task_id} is not approved and waiting for merge")
+        task.approved = False
+        self.emit("task.done", task, pr=task.pr, merged_by="human")
+        return self.tasks.get(task_id)
+
     def tick(self) -> list[Event]:
         """1 周分：トリガーのイベントを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する。"""
         start = len(self.events)
@@ -185,8 +212,12 @@ class Engine:
             self.create(**event.data)
         elif event.name == "decision.resolved":
             self.resolve(event.task_id, event.data["answers"])
+        elif event.name == "task.reopened":
+            self.reopen(event.task_id, event.data.get("note", ""))
+        elif event.name == "task.done":
+            self.merge(event.task_id)
         else:
-            raise flow.TransitionError(f"triggers may only send task.created or decision.resolved, got {event.name}")
+            raise flow.TransitionError(f"triggers may only send {', '.join(EXTERNAL_EVENTS)}, got {event.name}")
 
     def dispatch(self) -> list[Task]:
         """ready のタスクを優先度順に、同時実行数の上限まで始める。"""
@@ -202,7 +233,7 @@ class Engine:
     # --- ジョブ ------------------------------------------------------------
 
     def _wanted(self, task: Task) -> list[Role]:
-        roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE else []
+        roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE and not task.approved else []
         if task.to_distill:
             roles.append(Role.DISTILL)
         return roles
@@ -215,8 +246,6 @@ class Engine:
         for role in self._wanted(task):
             if role in task.jobs or self.executor.capacity() <= 0:
                 continue
-            if role == Role.IMPLEMENT:
-                task.pr, task.decisions = None, []  # やり直しなら、前の回の PR と判断は捨てる
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
             job.input = job_input(role, task, self.decisions.rules())
             if role == Role.DISTILL:
@@ -305,13 +334,13 @@ class Engine:
 
     def _implement_done(self, task: Task, result: ImplementResult) -> None:
         if result.returned is not None:
-            # 想定外の判断が出たら勝手に決めず、起票に差し戻す
+            # 想定外の判断が出たら勝手に決めず、起票に差し戻す。起票エージェントがルールを当て、埋まらなければ人に聞く
             r = result.returned
             q = task.add_question(r["text"], r.get("topic", ""), recommended=r.get("recommended"))
-            self._ask(task, [q])
             self.emit("task.returned", task, questions=[q.id])
             return
-        task.pr = result.pr
+        # 判断の一覧は PR ごとに出し直す。前の回の判断は、新しい PR の一覧で置き換える
+        task.pr, task.decisions, task.feedback = result.pr, [], []
         for d in result.decisions:
             decision = task.add_decision(d["text"], d["answer"], d.get("topic", ""), d.get("rule_ids"))
             if decision.rule_ids:
@@ -319,18 +348,44 @@ class Engine:
         self.emit("task.submitted", task, pr=task.pr)
 
     def _review_done(self, task: Task, result: ReviewResult) -> None:
-        if result.approved:
-            self.emit("task.done", task, pr=task.pr)
-            return
-        if not result.objections:
-            self.emit("task.failed", task, role=str(Role.REVIEW), message="review rejected without objections")
-            return
         known = {q.id for q in task.questions} | {d.id for d in task.decisions}
         if unknown := sorted(set(result.objections) - known):
             self.emit("task.failed", task, role=str(Role.REVIEW), message=f"objections to unknown decisions: {' '.join(unknown)}")
             return
+        # 人が答えた未決事項は人のゲートを通っているので、異議があっても蒸し返さない
+        settled = {q.id for q in task.questions if q.by == "human"}
+        objections = {did: why for did, why in result.objections.items() if did not in settled}
+        if result.approved:
+            self._approved(task)
+        elif objections:
+            self._escalate(task, objections)
+        elif result.changes:
+            self._request_changes(task, result.changes)
+        elif result.objections:
+            self._approved(task)  # 異議がすべて人の決めたことへのものだった
+        else:
+            self.emit("task.failed", task, role=str(Role.REVIEW), message="review rejected without objections")
+
+    def _approved(self, task: Task) -> None:
+        if not self.merge_gate:
+            self.emit("task.done", task, pr=task.pr, merged_by="auto")
+            return
+        task.approved = True
+        self.tasks.save(task)
+        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
+
+    def _request_changes(self, task: Task, changes: list[str]) -> None:
+        if task.reworks >= self.max_rework:
+            message = f"review asked for changes more than {self.max_rework} times: {'; '.join(changes)}"
+            self.emit("task.failed", task, role=str(Role.REVIEW), message=message)
+            return
+        task.reworks += 1
+        task.feedback = list(changes)
+        self.emit("review.changes_requested", task, changes=list(changes))
+
+    def _escalate(self, task: Task, objections: dict[str, str]) -> None:
         reopened = []
-        for did in result.objections:
+        for did in objections:
             # 異議のある判断は未決事項として起票に差し戻す。ルールに従った判断なら、ルールの書き直し候補にする
             if any(q.id == did for q in task.questions):
                 q = task.question(did)
@@ -344,7 +399,7 @@ class Engine:
                 q = task.add_question(d.text, d.topic, recommended=d.answer)
             self._ask(task, [q])
             reopened.append(q.id)
-        self.emit("review.escalated", task, questions=reopened, reasons=result.objections)
+        self.emit("review.escalated", task, questions=reopened, reasons=objections)
 
     # --- 既定の処理（イベントごと） -----------------------------------------
 
@@ -352,8 +407,8 @@ class Engine:
         self._start_jobs(task)  # 起票エージェント
 
     def _on_decision_requested(self, task: Task, event: Event) -> None:
-        # 同期の起票はその場で聞くので通知しない。非同期だけ判断キューに積んで知らせる
-        if event.data["channel"] == Channel.QUEUE and event.data["questions"]:
+        # 人に聞くときは必ず知らせる。inline と queue の違いは聞き方（対話か、キューか）だけ
+        if event.data["questions"]:
             self.notifier.notify(task, f"{task.id} needs a decision: {' '.join(event.data['questions'])}")
 
     def _on_decision_resolved(self, task: Task, event: Event) -> None:
@@ -366,7 +421,13 @@ class Engine:
         self._start_jobs(task)  # 実装エージェント
 
     def _on_task_returned(self, task: Task, event: Event) -> None:
-        self.notifier.notify(task, f"{task.id} was returned during implementation: {' '.join(event.data['questions'])}")
+        self._start_jobs(task)  # 起票エージェントがルールを当て直す
+
+    def _on_review_changes_requested(self, task: Task, event: Event) -> None:
+        self._start_jobs(task)  # 実装エージェントが指摘の分だけ直す
+
+    def _on_task_reopened(self, task: Task, event: Event) -> None:
+        self._start_jobs(task)  # 起票からやり直す
 
     def _on_task_submitted(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # レビューエージェント
