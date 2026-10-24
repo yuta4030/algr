@@ -70,8 +70,7 @@ use = "stub"
 
 
 def _task_text(task: Task) -> str:
-    status = f"{task.state}, approved" if task.approved else str(task.state)
-    lines = [f"{task.id} [{status}] {task.title}"]
+    lines = [f"{task.id} [{task.state}] {task.title}"]
     if task.purpose:
         lines.append(f"  purpose: {task.purpose}")
     if task.depends:

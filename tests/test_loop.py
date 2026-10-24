@@ -7,7 +7,7 @@ import json
 
 from conftest import run_until, state
 
-from algr.model import Event, State
+from algr.model import Event, State, Task
 
 
 def names(engine, task_id):
@@ -301,16 +301,24 @@ def test_human_settled_questions_are_not_reopened_by_review(engine):
 def test_merge_gate_waits_for_human(engine):
     engine.merge_gate = True
     engine.create("gated")
-    run_until(engine, lambda: engine.tasks.get("I1").approved)
+    run_until(engine, lambda: state(engine, "I1") == State.APPROVED)
     engine.tick()
     task = engine.tasks.get("I1")
-    assert (task.state, task.jobs) == (State.REVIEW, {})  # 承認済みのあいだはレビューを起動し直さない
+    assert (task.state, task.jobs) == (State.APPROVED, {})  # 承認済みのあいだはレビューを起動し直さない
     assert engine.notifier.sent()[-1]["message"] == "I1 is approved and waiting for merge: pr/I1"
     approved = [e for e in engine.events if e.name == "review.approved"]
     assert [e.data for e in approved] == [{"from": "review", "pr": "pr/I1"}]  # 承認の瞬間に 1 回だけ
     engine.merge("I1")
     assert state(engine, "I1") == State.DONE
-    assert engine.events[-1].data == {"from": "review", "pr": "pr/I1", "merged_by": "human"}
+    assert engine.events[-1].data == {"from": "approved", "pr": "pr/I1", "merged_by": "human"}
+
+
+def test_old_task_file_with_approved_flag_reads_as_approved_state():
+    old = {"id": "I1", "title": "t", "state": "review", "approved": True}
+    task = Task.from_dict(old)
+    assert task.state == State.APPROVED
+    assert "approved" not in task.to_dict()
+    assert Task.from_dict({**old, "approved": False}).state == State.REVIEW
 
 
 def test_dependent_task_waits_until_dependency_is_done(engine, repo):

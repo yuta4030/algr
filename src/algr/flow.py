@@ -1,7 +1,7 @@
 """状態遷移とイベント、遷移ごとの不変条件。
 
-タスクは 7 つの状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
-人が関わるのは needs-decision と failed、それにマージのゲートを置いたときの承認済みの review だけ。
+タスクは 8 つの状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
+人が関わるのは needs-decision と failed、それにマージのゲートを置いたときの approved だけ。
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "task.submitted": (frozenset({S.IN_PROGRESS}), S.REVIEW),
     "review.changes_requested": (frozenset({S.REVIEW}), S.IN_PROGRESS),
     "review.escalated": (frozenset({S.REVIEW}), S.NEEDS_DECISION),
-    "review.approved": (frozenset({S.REVIEW}), S.REVIEW),
-    "task.done": (frozenset({S.REVIEW}), S.DONE),
-    "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW}), S.FAILED),
+    "review.approved": (frozenset({S.REVIEW}), S.APPROVED),
+    "task.done": (frozenset({S.REVIEW, S.APPROVED}), S.DONE),
+    "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW, S.APPROVED}), S.FAILED),
     "task.reopened": (frozenset({S.FAILED}), S.INTAKE),
 }
 

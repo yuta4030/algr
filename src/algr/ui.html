@@ -353,7 +353,7 @@ function detail(id) {
     <div class="kv">
       <span class="mute">いま</span><span class="who"><i class="dot ${kind}"></i>${esc(label)} <span class="mute">· ${ago(t.progress.since)}</span></span>
       ${t.purpose ? `<span class="mute">目的</span><span>${esc(t.purpose)}</span>` : ""}
-      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.approved ? " ✓" : ""}</span>` : ""}
+      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.state === "approved" ? " ✓" : ""}</span>` : ""}
       ${t.depends.length ? `<span class="mute">依存</span><span class="mono">${t.depends.join(" ")}</span>` : ""}
       ${usage ? `<span class="mute">トークン</span><span>${usage.toLocaleString()}</span>` : ""}
     </div>
@@ -481,7 +481,7 @@ function renderRules() {
 }
 
 // 状態の置き場所。主経路を横に、人の番を上下に置く
-const POS = { intake: [90, 200], ready: [270, 200], "in-progress": [450, 200], review: [630, 200], done: [810, 200], "needs-decision": [360, 60], failed: [450, 345] };
+const POS = { intake: [90, 200], ready: [270, 200], "in-progress": [450, 200], review: [630, 200], approved: [720, 290], done: [810, 200], "needs-decision": [360, 60], failed: [450, 345] };
 function renderFlow() {
   const f = hist.flow, max = Math.max(1, ...f.edges.map((e) => e.count)), NW = 120, NH = 58;
   const stages = data.flow.stages;
