@@ -28,6 +28,24 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
 
 EVENTS = tuple(TRANSITIONS)
 
+# イベントごとのペイロード（Event.data）のキー。hook はこれを当てにしてよい。
+# どのイベントにも遷移元の状態 "from" が付く（task.created は ""）。決断 ID の並びは必ず "questions" で渡す。
+EVENT_DATA: dict[str, tuple[str, ...]] = {
+    "task.created": ("source",),
+    "decision.requested": ("channel", "questions"),
+    "decision.resolved": ("questions",),
+    "task.ready": (),
+    "task.started": (),
+    "task.returned": ("questions",),
+    "task.submitted": ("pr",),
+    "review.escalated": ("questions", "reasons"),
+    "task.done": ("pr",),
+    "task.failed": ("role", "message"),
+}
+
+# hook の差し込み口。イベント名のほかに、すべてのイベントを受ける "*" を使える
+HOOK_POINTS = (*EVENTS, "*")
+
 
 class TransitionError(Exception):
     pass
@@ -82,3 +100,10 @@ def check(event: str, task: Task) -> State:
         if problem:
             raise TransitionError(f"{event}: {problem}")
     return target
+
+
+def check_data(event: str, data: dict) -> None:
+    """event のペイロードが EVENT_DATA の形どおりかを確かめる。"""
+    want = {"from", *EVENT_DATA[event]}
+    if set(data) != want:
+        raise TransitionError(f"{event} carries {sorted(data)}, expected {sorted(want)}")

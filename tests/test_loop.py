@@ -201,3 +201,36 @@ def test_hooks_run_after_default_handler(repo, home):
     engine.create("hooked")
     hook = engine.hooks["task.created"][0]
     assert hook.__globals__["seen"] == [["intake"]]  # 既定の処理（起票エージェントの起動）のあとに呼ばれる
+
+
+def test_events_carry_their_payload_and_source_state(engine):
+    task = engine.create("payload", questions=[{"text": "Which?", "topic": "x"}])
+    run_until(engine, lambda: state(engine, task.id) == State.NEEDS_DECISION)
+    engine.resolve(task.id, {f"{task.id}-1": "this"})
+    run_until(engine, lambda: state(engine, task.id) == State.DONE)
+    by_name = {e.name: e.data for e in engine.events}
+    assert by_name["task.created"] == {"from": "", "source": "human"}
+    assert by_name["decision.resolved"] == {"from": "needs-decision", "questions": [f"{task.id}-1"]}
+    assert by_name["task.done"]["from"] == "review"
+
+
+def test_failing_hook_does_not_stop_the_flow(repo, home):
+    from conftest import write_config
+
+    from algr.config import Config
+    from algr.engine import Engine
+
+    (repo / ".algr" / "hooks.py").write_text(
+        "seen = []\n"
+        "def boom(event, engine):\n    raise RuntimeError('boom')\n"
+        "def every(event, engine):\n    seen.append(event.name)\n",
+        encoding="utf-8",
+    )
+    write_config(repo, '[hooks]\n"task.created" = [".algr/hooks.py:boom"]\n"*" = [".algr/hooks.py:every"]\n')
+    engine = Engine.from_config(Config.load(repo))
+    task = engine.create("hooked")
+    run_until(engine, lambda: state(engine, task.id) == State.DONE)
+    seen = engine.hooks["*"][0].__globals__["seen"]
+    assert seen == [e.name for e in engine.events]  # "*" はすべてのイベントを受ける
+    notes = (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8")
+    assert "hook boom failed on task.created: RuntimeError: boom" in notes

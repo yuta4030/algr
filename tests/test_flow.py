@@ -44,3 +44,13 @@ def test_unknown_event():
 
 def test_human_answers_always_return_to_intake():
     assert flow.TRANSITIONS["decision.resolved"] == (frozenset({State.NEEDS_DECISION}), State.INTAKE)
+
+
+def test_every_event_has_a_payload_shape():
+    assert set(flow.EVENT_DATA) == set(flow.EVENTS)
+
+
+def test_payload_must_match_its_shape():
+    flow.check_data("task.returned", {"from": "in-progress", "questions": ["I1-1"]})
+    with pytest.raises(flow.TransitionError, match="expected"):
+        flow.check_data("task.returned", {"from": "in-progress", "question": "I1-1"})

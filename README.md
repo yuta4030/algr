@@ -44,18 +44,32 @@ algr run                                           # 起票 → 実装 → レ�
 
 人が関わるのは needs-decision と failed だけです。人が答えると必ず起票に戻り、そこから主経路に合流します。
 
-| イベント | 既定の処理 |
-|---|---|
-| `task.created` | 起票エージェントを起動する |
-| `decision.requested` | 非同期（`source: auto`）のときだけ通知する |
-| `decision.resolved` | 起票エージェントと蒸留エージェントを起動する |
-| `task.ready` | 配車を待つ |
-| `task.started` | 実装エージェントを起動する |
-| `task.returned` | 人に知らせる |
-| `task.submitted` | レビューエージェントを起動する |
-| `review.escalated` | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
-| `task.done` | ルールに従った判断を hit として記録する |
-| `task.failed` | 人に上げる |
+イベント名とペイロード（`Event.data`）の形は固定です（`src/algr/flow.py` の `TRANSITIONS` と `EVENT_DATA`）。
+どのイベントにも遷移元の状態 `from` が付き（`task.created` は `""`）、決断 ID の並びは必ず `questions` で渡します。
+
+| イベント | ペイロード | 既定の処理 |
+|---|---|---|
+| `task.created` | `source`（`human` / `auto`） | 起票エージェントを起動する |
+| `decision.requested` | `channel`（`inline` / `queue`）、`questions` | 非同期（`queue`）のときだけ通知する |
+| `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントと蒸留エージェントを起動する |
+| `task.ready` | — | 配車を待つ |
+| `task.started` | — | 実装エージェントを起動する |
+| `task.returned` | `questions` | 人に知らせる |
+| `task.submitted` | `pr` | レビューエージェントを起動する |
+| `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
+| `task.done` | `pr` | ルールに従った判断を hit として記録する |
+| `task.failed` | `role`、`message` | 人に上げる |
+
+### hook
+
+hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべてのイベントを受けるなら `"*"`）ごとに並べます。
+
+- 形は `hook(event, engine)`。`event.data` は上の表の形です。タスクは `engine.tasks.get(event.task_id)` で読み直します
+- 呼ばれるのは状態を保存し、既定の処理を済ませたあとです。hook は遷移を止められません（止める判断はエージェントと不変条件が持ちます）
+- hook の中で `engine.emit` したイベントは、今のイベントの hook がすべて済んでから処理します
+- hook が例外を投げてもフローは止めません。`.algr/state/events.jsonl` に `hook_error` を残し、通知アダプタで人に知らせます
+- 知らないイベント名の hook は、設定の読み込みでエラーにします
+- イベントは再送されることがあるので、hook もアダプタと同じく冪等に書きます
 
 遷移ごとに不変条件があります（例：ready にするには未決事項がゼロ、ルールで埋めた未決事項にはルールの ID が付いている）。
 
@@ -99,6 +113,7 @@ channel = "#dev"
 
 [hooks]
 "task.done" = [".algr/hooks.py:on_done"]  # hook(event, engine)
+"*" = [".algr/hooks.py:log"]              # すべてのイベント
 ```
 
 アダプタは `Class(ctx, **options)` で作られます。IF は `src/algr/adapters/__init__.py` にあります。

@@ -20,7 +20,8 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 
 ## 状態とイベント
 - 状態：intake / needs-decision / ready / in-progress / review / done / failed
-- イベントと遷移は `src/algr/flow.py` の `TRANSITIONS`、不変条件は `INVARIANTS`。イベント名を変えるときは README の表も直す
+- イベントと遷移は `src/algr/flow.py` の `TRANSITIONS`、不変条件は `INVARIANTS`、ペイロードの形は `EVENT_DATA`。イベント名やペイロードを変えるときは README の表も直す
+- hook は既定の処理のあとに呼ぶ観察者で、遷移を止めない。hook の失敗でフローを止めない
 - 決断 ID はタスク単位で振る（`I123-1`）。k2down の `--decision` にそのまま渡す
 - 未決事項（`Task.questions`、起票で埋める）と判断（`Task.decisions`、実装エージェントが PR に載せる）は混ぜない
 

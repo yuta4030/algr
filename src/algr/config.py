@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from algr.adapters import KINDS, Context
+from algr.flow import HOOK_POINTS
 
 CONFIG_FILE = "config.toml"
 
@@ -130,6 +131,10 @@ class Config:
         return adapter
 
     def hooks(self) -> dict[str, list[Any]]:
+        """イベント名（または全イベントを受ける "*"）→ hook(event, engine) の並び。"""
+        for event in self.data["hooks"]:
+            if event not in HOOK_POINTS:
+                raise ConfigError(f"hooks: unknown event {event!r} (one of {', '.join(HOOK_POINTS)})")
         return {event: [self.resolve(spec, {}) for spec in specs] for event, specs in self.data["hooks"].items()}
 
     @property

@@ -58,7 +58,7 @@ dir = ".algr/decisions"
 use = "stub"
 
 [hooks]
-# "task.done" = [".algr/hooks.py:on_done"]
+# "task.done" = [".algr/hooks.py:on_done"]  # hook(event, engine)。"*" ですべてのイベント
 """
 
 

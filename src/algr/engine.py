@@ -50,7 +50,7 @@ class Engine:
         self._pending: deque[Event] = deque()
         self._draining = False
         for name in self.hooks:
-            if name not in flow.EVENTS:
+            if name not in flow.HOOK_POINTS:
                 raise flow.TransitionError(f"hook for unknown event: {name}")
 
     @classmethod
@@ -70,14 +70,14 @@ class Engine:
 
     def emit(self, name: str, task: Task, **data: Any) -> Event:
         """遷移を確かめて状態を動かし、保存してからイベントを積む。処理は積んだ順に 1 つずつ行う。"""
-        task.state = flow.check(name, task)
+        target = flow.check(name, task)
+        data = {"from": "" if name == "task.created" else str(task.state), **data}
+        flow.check_data(name, data)
+        task.state = target
         self.tasks.save(task)
         event = Event(name, task.id, data)
         self.events.append(event)
-        if self.event_log:
-            self.event_log.parent.mkdir(parents=True, exist_ok=True)
-            with self.event_log.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
+        self._log(event.to_dict())
         self._pending.append(event)
         self._drain()
         return event
@@ -92,10 +92,26 @@ class Engine:
                 event = self._pending.popleft()
                 handler = getattr(self, "_on_" + event.name.replace(".", "_"))
                 handler(self.tasks.get(event.task_id), event)
-                for hook in self.hooks.get(event.name, []):
-                    hook(event, self)
+                for hook in [*self.hooks.get(event.name, []), *self.hooks.get("*", [])]:
+                    self._call_hook(hook, event)
         finally:
             self._draining = False
+
+    def _call_hook(self, hook: Hook, event: Event) -> None:
+        """hook は既定の処理のあとに呼ぶ。状態はもう動いているので、hook が落ちてもフローは止めずに人に知らせる。"""
+        try:
+            hook(event, self)
+        except Exception as e:  # noqa: BLE001 — 利用側のコードの失敗でループを止めない
+            name = getattr(hook, "__qualname__", repr(hook))
+            message = f"hook {name} failed on {event.name}: {type(e).__name__}: {e}"
+            self._log({"hook_error": message, "event": event.to_dict()})
+            self.notifier.notify(self.tasks.get(event.task_id), f"{event.task_id} {message}")
+
+    def _log(self, record: dict[str, Any]) -> None:
+        if self.event_log:
+            self.event_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.event_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     # --- 人やトリガーからの入口 -------------------------------------------
 
@@ -128,7 +144,7 @@ class Engine:
             q.answer, q.by = answer, "human"
             self.decisions.decide(q.id, "none", answer)
             task.to_distill.append(q.id)
-        self.emit("decision.resolved", task, answered=list(answers))
+        self.emit("decision.resolved", task, questions=list(answers))
         return self.tasks.get(task_id)
 
     def tick(self) -> list[Event]:
@@ -276,7 +292,7 @@ class Engine:
             r = result.returned
             q = task.add_question(r["text"], r.get("topic", ""), recommended=r.get("recommended"))
             self._ask(task, [q])
-            self.emit("task.returned", task, question=q.id)
+            self.emit("task.returned", task, questions=[q.id])
             return
         task.pr = result.pr
         for d in result.decisions:
@@ -333,7 +349,7 @@ class Engine:
         self._start_jobs(task)  # 実装エージェント
 
     def _on_task_returned(self, task: Task, event: Event) -> None:
-        self.notifier.notify(task, f"{task.id} was returned during implementation: {event.data['question']}")
+        self.notifier.notify(task, f"{task.id} was returned during implementation: {' '.join(event.data['questions'])}")
 
     def _on_task_submitted(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # レビューエージェント
