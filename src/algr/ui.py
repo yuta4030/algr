@@ -7,10 +7,11 @@ GUI は判断も状態も持たない。読むのはアダプタの IF とエン
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from algr import flow, stats
@@ -104,6 +105,134 @@ def snapshot(engine: Engine) -> dict[str, Any]:
     }
 
 
+# --- サブページ ---------------------------------------------------------
+
+
+def _ts(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+def _by_task(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        if "task_id" in r:
+            out.setdefault(r["task_id"], []).append(r)
+    return out
+
+
+def trend(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """起票した日でタスクを束ね、束ごとに指標を出す。3 週間を超えたら週で、それまでは日で束ねる。"""
+    groups = _by_task(records)
+    created = {
+        task_id: _ts(r["ts"]).date()
+        for task_id, rs in groups.items()
+        for r in rs
+        if r.get("name") == "task.created"
+    }
+    if not created:
+        return {"unit": "day", "buckets": []}
+    weekly = (max(created.values()) - min(created.values())).days > 21
+
+    def bucket(d: date) -> date:
+        return d - timedelta(days=d.weekday()) if weekly else d
+
+    step = timedelta(days=7 if weekly else 1)
+    first, last = bucket(min(created.values())), bucket(max(created.values()))
+    buckets = []
+    day = first
+    while day <= last:
+        ids = [t for t, d in created.items() if bucket(d) == day]
+        buckets.append({"start": day.isoformat(), **stats.summarize([r for t in ids for r in groups[t]])})
+        day += step
+    return {"unit": "week" if weekly else "day", "buckets": buckets}
+
+
+def flow_counts(records: list[dict[str, Any]], tasks: list[Task]) -> dict[str, Any]:
+    """遷移ごとの通過回数と、状態ごとの滞在時間の中央値。遷移の定義は flow.TRANSITIONS から取る。"""
+    events = [r for r in records if "name" in r]
+    counts: dict[tuple[str, str], int] = {}
+    for e in events:
+        if e["name"] != "task.created":
+            key = (e["name"], e["data"]["from"])
+            counts[key] = counts.get(key, 0) + 1
+    edges = [
+        {"event": name, "from": str(src), "to": str(target), "count": counts.get((name, str(src)), 0)}
+        for name, (sources, target) in flow.TRANSITIONS.items()
+        for src in sorted(sources)
+    ]
+    stays: dict[str, list[float]] = {}
+    for rs in _by_task(events).values():
+        for e, nxt in zip(rs, rs[1:]):
+            state = str(flow.TRANSITIONS[e["name"]][1])
+            stays.setdefault(state, []).append((_ts(nxt["ts"]) - _ts(e["ts"])).total_seconds())
+    states = [
+        {
+            "state": str(s),
+            "now": sum(1 for t in tasks if t.state == s),
+            "stay_median_s": median(stays[str(s)]) if stays.get(str(s)) else None,
+        }
+        for s in State
+    ]
+    return {"edges": edges, "states": states}
+
+
+def rule_usage(tasks: list[Task], rules: list[dict[str, str]], proposals: list[dict[str, str]]) -> dict[str, Any]:
+    """ルールがどこで使われたか、まだルールになっていない判断はどこにあるか。"""
+    used: dict[str, list[dict[str, str]]] = {r["id"]: [] for r in rules}
+    topics: dict[str, dict[str, Any]] = {}
+    questions = {}
+    for t in tasks:
+        for q in t.questions:
+            questions[q.id] = {"text": q.text, "answer": q.answer}
+            for rid in q.rule_ids:
+                used.setdefault(rid, []).append({"task_id": t.id, "id": q.id})
+            if q.by == "human":
+                topic = topics.setdefault(q.topic, {"topic": q.topic, "human": 0, "agent": 0, "examples": []})
+                topic["human"] += 1
+                topic["examples"].append({"id": q.id, "text": q.text, "answer": q.answer, "by": "human"})
+        for d in t.decisions:
+            for rid in d.rule_ids:
+                used.setdefault(rid, []).append({"task_id": t.id, "id": d.id})
+            if not d.rule_ids:
+                topic = topics.setdefault(d.topic, {"topic": d.topic, "human": 0, "agent": 0, "examples": []})
+                topic["agent"] += 1
+                topic["examples"].append({"id": d.id, "text": d.text, "answer": d.answer, "by": "agent"})
+    return {
+        "rules": [{**r, "uses": used.get(r["id"], [])} for r in rules],
+        # 人が何度も答えている、またはエージェントが根拠なしで決めている topic は、ルールにする候補
+        "candidates": sorted(topics.values(), key=lambda c: -(c["human"] + c["agent"])),
+        "proposals": [{**p, "question": questions.get(p.get("source", ""))} for p in proposals],
+    }
+
+
+def jobs(records: list[dict[str, Any]], tasks: list[Task]) -> list[dict[str, Any]]:
+    """ジョブごとの開始・終了とトークン数。終わっていないジョブは end が None。"""
+    titles = {t.id: t.title for t in tasks}
+    out: dict[str, dict[str, Any]] = {}
+    for r in records:
+        if "job_started" in r:
+            out[r["job_started"]] = {
+                "job": r["job_started"], "task_id": r["task_id"], "title": titles.get(r["task_id"], ""),
+                "role": r["role"], "start": r["ts"], "end": None, "state": "running", "tokens": 0,
+            }  # fmt: skip
+        elif "job" in r and r["job"] in out:
+            out[r["job"]].update(end=r.get("ts"), state=r["state"], tokens=sum(r.get("usage", {}).values()))
+    return list(out.values())
+
+
+def history(engine: Engine) -> dict[str, Any]:
+    records = stats.load(engine.event_log) if engine.event_log else []
+    tasks = engine.tasks.list()
+    rules = [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]
+    return {
+        "now": datetime.now(UTC).isoformat(timespec="seconds"),
+        "trend": trend(records),
+        "flow": flow_counts(records, tasks),
+        "rules": rule_usage(tasks, rules, engine.decisions.proposals()),
+        "jobs": jobs(records, tasks),
+    }
+
+
 class _Handler(BaseHTTPRequestHandler):
     engine: Engine
     hosts: set[str]
@@ -125,8 +254,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain")
         elif self.path == "/":
             self._send(HTTPStatus.OK, PAGE.read_bytes(), "text/html; charset=utf-8")
-        elif self.path == "/api/snapshot":
-            body = json.dumps(snapshot(self.engine), ensure_ascii=False).encode("utf-8")
+        elif self.path in ("/api/snapshot", "/api/history"):
+            build = snapshot if self.path == "/api/snapshot" else history
+            body = json.dumps(build(self.engine), ensure_ascii=False).encode("utf-8")
             self._send(HTTPStatus.OK, body, "application/json; charset=utf-8")
         else:
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")

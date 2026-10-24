@@ -19,7 +19,7 @@ ASKED_EVENTS = ("decision.requested", "review.escalated")
 
 
 def load(path: Path) -> list[dict[str, Any]]:
-    """イベントのほかに、ジョブの記録（"job"）と hook の失敗（"hook_error"）も含めて返す。"""
+    """イベントのほかに、ジョブの起動（"job_started"）と終了（"job"）、hook の失敗（"hook_error"）も含めて返す。"""
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

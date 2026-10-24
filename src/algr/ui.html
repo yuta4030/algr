@@ -9,11 +9,14 @@
   --bg: #f6f6f3; --panel: #fff; --line: #e4e3dd; --ink: #1d1d1b; --mute: #8a8981;
   --agent: #3d6fd8; --human: #d9822b; --queue: #b5b3aa; --ok: #2f9e6a; --bad: #d1453b;
   --track: #ecebe5;
+  /* 系列の色（固定の順で使う）と、系列が 1 つのときの中立色 */
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s0: #52514e;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #151514; --panel: #1e1e1c; --line: #2e2e2b; --ink: #ecebe5; --mute: #8a8981;
     --agent: #6f97ef; --human: #eda055; --queue: #5c5b56; --ok: #4cbf89; --bad: #ef6a5f; --track: #2a2a27;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s0: #c3c2b7;
   }
 }
 * { box-sizing: border-box; }
@@ -108,22 +111,88 @@ details.done-list summary::before { content: "▸ "; } details.done-list[open] s
 .cli .btn.copy { cursor: pointer; color: var(--ink); }
 .fail { color: var(--bad); font-size: 13px; }
 
+/* ページの切り替え */
+nav { display: flex; gap: 2px; background: var(--track); border-radius: 8px; padding: 2px; }
+nav a { color: var(--mute); text-decoration: none; font-size: 12px; padding: 3px 10px; border-radius: 6px; }
+nav a.on { background: var(--panel); color: var(--ink); font-weight: 600; }
+.view[hidden] { display: none; }
+main.page { display: block; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.grid2 > section { margin-bottom: 0; }
+#tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); display: none; white-space: nowrap; }
+#tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
+/* 推移 */
+.chart { position: relative; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid line { stroke: var(--line); }
+.chart .axis text, .chart .lbl { fill: var(--mute); font-size: 10px; }
+.chart .ln { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.chart .pt { stroke: var(--panel); stroke-width: 2; }
+.chart .cross { stroke: var(--mute); stroke-dasharray: 2 3; display: none; }
+.legend { display: flex; gap: 12px; font-size: 11px; color: var(--mute); margin: -4px 0 6px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+/* ルール */
+.rrow { display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.rrow.unused { color: var(--mute); }
+.use { display: flex; align-items: center; gap: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.use .bar { height: 6px; border-radius: 0 3px 3px 0; background: var(--ok); min-width: 2px; }
+.prop { border: 1px solid var(--line); border-left: 3px solid var(--human); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; }
+.prop .src { font-size: 12px; color: var(--mute); margin: 4px 0 8px; }
+.cand { display: grid; grid-template-columns: 80px minmax(0, 1fr) 70px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.stack { display: flex; gap: 2px; height: 8px; }
+.stack i { border-radius: 2px; }
+
+/* フロー */
+.flow svg { width: 100%; height: auto; display: block; }
+.flow .node rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.flow .node.human rect { stroke: var(--human); } .flow .node.done rect { stroke: var(--ok); } .flow .node.failed rect { stroke: var(--bad); }
+.flow .node .name { font-size: 12px; fill: var(--mute); }
+.flow .node .now { font-size: 20px; font-weight: 600; fill: var(--ink); }
+.flow .node .stay { font-size: 10px; fill: var(--mute); }
+.flow .edge { fill: none; stroke: var(--s0); opacity: .55; }
+.flow .edge.human { stroke: var(--human); opacity: .8; } .flow .edge.bad { stroke: var(--bad); opacity: .8; }
+.flow .edge.zero { stroke-dasharray: 3 4; opacity: .3; }
+.flow .edge:hover { opacity: 1; }
+.flow .elbl rect { fill: var(--panel); } .flow .elbl text { font-size: 11px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ジョブ */
+.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.seg { display: flex; gap: 2px; background: var(--track); border-radius: 8px; padding: 2px; }
+.seg button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--mute); padding: 3px 10px; border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--panel); color: var(--ink); font-weight: 600; }
+.jrow { display: grid; grid-template-columns: 44px minmax(0, 180px) minmax(0, 1fr) 130px 52px; gap: 10px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.jrow.head { border-top: 0; font-size: 10px; color: var(--mute); }
+.jrow .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { position: relative; height: 14px; background: var(--bg); border-radius: 3px; }
+.track i { position: absolute; top: 2px; bottom: 2px; min-width: 3px; border-radius: 2px; }
+.track b { position: absolute; top: 6px; height: 2px; background: var(--line); }
+.track i.running { animation: pulse 1.6s ease-in-out infinite; }
+.ticks { position: relative; height: 12px; }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
 /* 狭い画面：行を 2 段にする */
 @media (max-width: 860px) {
   main { grid-template-columns: minmax(0, 1fr); padding: 16px; } header { padding: 12px 16px; flex-wrap: wrap; }
   .row { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "id title age" ". steps who"; row-gap: 6px; }
   .row > .id { grid-area: id; } .row > .title { grid-area: title; } .row > .steps { grid-area: steps; } .row > .who { grid-area: who; } .row > .age { grid-area: age; }
   .row.head { display: none; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .jrow { grid-template-columns: 30px minmax(0, 1fr) 70px; }
+  .jrow > .title, .jrow > .busy { display: none; }
+  .counts { display: none; }
 }
 </style>
 </head>
 <body>
 <header>
   <h1>algr</h1>
+  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a></nav>
   <div class="counts" id="counts"></div>
   <div class="updated mute"><span class="live" id="live"></span><span id="updated"></span></div>
 </header>
-<main>
+<main class="view" id="view-now">
   <div>
     <section><h2>あなたの番 <span class="n" id="turn-n">0</span></h2><div id="turns"></div></section>
     <section><h2>進捗 <span class="n" id="active-n">0</span></h2><div class="rows" id="rows"></div></section>
@@ -134,6 +203,19 @@ details.done-list summary::before { content: "▸ "; } details.done-list[open] s
     <section><h2>ルール <span class="n" id="rule-n">0</span></h2><ul class="list" id="rules"></ul></section>
   </div>
 </main>
+<main class="view page" id="view-trend" hidden><div class="grid2" id="trend"></div></main>
+<main class="view page" id="view-rules" hidden>
+  <div class="grid2">
+    <section><h2>ルール <span class="n" id="r-n">0</span></h2><div id="r-rules"></div></section>
+    <div>
+      <section><h2>提案 <span class="n" id="r-pn">0</span></h2><div id="r-props"></div></section>
+      <section><h2>まだルールでない判断</h2><div id="r-cands"></div></section>
+    </div>
+  </div>
+</main>
+<main class="view page" id="view-flow" hidden><section class="flow"><h2>遷移の回数と滞在時間（中央値）</h2><div id="flow"></div></section></main>
+<main class="view page" id="view-jobs" hidden><section><div class="filters"><div class="seg" id="j-range"></div><div class="legend" id="j-legend" style="margin:0"></div></div><div id="jobs"></div></section></main>
+<div id="tip"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
 <script>
@@ -306,8 +388,181 @@ async function load() {
     $("live").style.background = "var(--bad)";
   }
 }
+// --- サブページ ------------------------------------------------------------
+let hist = null, view = "now", range = "7d";
+const ROLE_COLOR = { implement: "var(--s1)", review: "var(--s2)", intake: "var(--s3)", distill: "var(--s4)" };
+const charts = new Map();
+const tip = (html, ev) => {
+  const el = $("tip");
+  if (!html) { el.style.display = "none"; return; }
+  el.innerHTML = html; el.style.display = "block";
+  const x = Math.min(ev.clientX + 14, innerWidth - el.offsetWidth - 8);
+  el.style.left = `${x}px`; el.style.top = `${ev.clientY + 14}px`;
+};
+const sw = (c) => `<span class="sw" style="background:${c}"></span>`;
+const dur = (s) => (s === null || s === undefined ? "–" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${(s / 3600).toFixed(1)}h` : `${(s / 86400).toFixed(1)}d`);
+const md = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
+// 折れ線。系列が 2 つ以上なら凡例と線の端のラベルを付ける。軸は 1 本だけ
+function lineChart(id, { labels, series, fmt, max }) {
+  const W = 480, H = 170, L = 34, R = series.length > 1 ? 64 : 12, T = 8, B = 22;
+  const vals = series.flatMap((s) => s.values).filter((v) => v !== null);
+  const top = max ?? Math.max(1e-9, ...vals) * 1.15;
+  const x = (i) => L + (labels.length < 2 ? (W - L - R) / 2 : (i * (W - L - R)) / (labels.length - 1));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const every = Math.ceil(labels.length / 8);
+  let svg = `<g class="grid">${[0, 0.5, 1].map((f) => `<line x1="${L}" x2="${W - R}" y1="${y(top * f)}" y2="${y(top * f)}"/>`).join("")}</g>`;
+  svg += `<g class="axis">${[0, 0.5, 1].map((f) => `<text x="${L - 6}" y="${y(top * f) + 3}" text-anchor="end">${fmt(top * f)}</text>`).join("")}`;
+  svg += labels.map((l, i) => (i % every ? "" : `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${l}</text>`)).join("") + "</g>";
+  const ends = series.map((s) => s.values.map((v, i) => [v, i]).filter(([v]) => v !== null).pop()).map((e, k) => e && { k, i: e[1], y: y(e[0]) + 3 }).filter(Boolean).sort((a, b) => b.y - a.y);
+  ends.forEach((e, n) => { if (n && ends[n - 1].y - e.y < 12) e.y = ends[n - 1].y - 12; });  // 下から順に上へ押し上げる
+  if (series.length > 1) svg += ends.map((e) => `<text class="lbl" x="${x(e.i) + 8}" y="${e.y}">${series[e.k].name}</text>`).join("");
+  for (const s of series) {
+    let d = "", pen = false;
+    s.values.forEach((v, i) => { if (v === null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i)},${y(v)}`; pen = true; });
+    svg += `<path class="ln" d="${d}" style="stroke:${s.color}"/>`;
+    svg += s.values.map((v, i) => (v === null ? "" : `<circle class="pt" cx="${x(i)}" cy="${y(v)}" r="4" style="fill:${s.color}"/>`)).join("");
+  }
+  svg += `<line class="cross" y1="${T}" y2="${H - B}"/>`;
+  charts.set(id, { labels, series, fmt, x, L, R, W });
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("")}</div>` : "";
+  return `${legend}<div class="chart" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div>`;
+}
+
+document.addEventListener("mousemove", (ev) => {
+  const box = ev.target.closest?.(".chart");
+  const bar = ev.target.closest?.("[data-tip]");
+  if (bar) return tip(bar.dataset.tip, ev);
+  if (!box) { tip(null); document.querySelectorAll(".cross").forEach((c) => (c.style.display = "none")); return; }
+  const c = charts.get(box.dataset.chart), svg = box.querySelector("svg"), r = svg.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * c.W;
+  let i = 0;
+  c.labels.forEach((_, k) => { if (Math.abs(c.x(k) - px) < Math.abs(c.x(i) - px)) i = k; });
+  const cross = svg.querySelector(".cross");
+  cross.setAttribute("x1", c.x(i)); cross.setAttribute("x2", c.x(i)); cross.style.display = "block";
+  tip(`<b>${c.labels[i]}〜</b> <span class="mute">${c.extra?.[i] ?? ""}</span><br>` + c.series.map((s) => `${sw(s.color)}${s.name} <b>${s.values[i] === null ? "–" : c.fmt(s.values[i])}</b>`).join("<br>"), ev);
+});
+
+function renderTrend() {
+  const b = hist.trend.buckets, labels = b.map((x) => md(x.start)), col = (k) => b.map((x) => x[k] ?? null);
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const charts_ = [
+    ["差し戻し・修正依頼", "t1", { labels, fmt: pct, max: 1, series: [
+      { name: "実装", color: "var(--s1)", values: col("return_rate_implement") },
+      { name: "レビュー", color: "var(--s2)", values: col("return_rate_review") },
+      { name: "修正依頼", color: "var(--s3)", values: col("rework_rate") }] }],
+    ["人の介入 / 件", "t2", { labels, fmt: (v) => v.toFixed(1), series: [{ name: "介入 / 件", color: "var(--s0)", values: col("interventions_per_task") }] }],
+    ["STP 率", "t3", { labels, fmt: pct, max: 1, series: [{ name: "STP", color: "var(--s0)", values: col("stp_rate") }] }],
+    ["判断待ち（中央値）", "t4", { labels, fmt: (v) => dur(v), series: [{ name: "判断待ち", color: "var(--s0)", values: col("decision_wait_median_s") }] }],
+    ["トークン / 件", "t5", { labels, fmt: (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)), series: [{ name: "トークン", color: "var(--s0)", values: col("tokens_per_task") }] }],
+    ["起票数", "t6", { labels, fmt: (v) => Math.round(v), series: [{ name: "起票", color: "var(--s0)", values: col("tasks") }] }],
+  ];
+  $("trend").innerHTML = b.length ? charts_.map(([title, id, o]) => `<section><h2>${title}</h2>${lineChart(id, o)}</section>`).join("") : `<section class="empty">–</section>`;
+  for (const [, id] of charts_) if (charts.get(id)) charts.get(id).extra = b.map((x) => `${x.tasks}件`);
+}
+
+function renderRules() {
+  const r = hist.rules, max = Math.max(1, ...r.rules.map((x) => x.uses.length));
+  const rules = r.rules.slice().sort((a, b) => b.uses.length - a.uses.length);
+  $("r-n").textContent = rules.length;
+  $("r-rules").innerHTML = rules.map((x) => `<div class="rrow ${x.uses.length ? "" : "unused"}">
+    <span class="mono mute">${x.id}</span><span>${esc(x.text)}</span>
+    <span class="use" data-tip="${esc(x.uses.map((u) => u.id).join(" ") || "未使用")}">${x.uses.length ? `<i class="bar" style="width:${(x.uses.length / max) * 80}px"></i>${x.uses.length}` : "未使用"}</span></div>`).join("") || `<div class="empty">–</div>`;
+  $("r-pn").textContent = r.proposals.length;
+  $("r-props").innerHTML = r.proposals.map((p) => `<div class="prop"><b>${esc(p.rule)}</b>
+    <div class="src">${p.question ? `${esc(p.source)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.source)}</div>
+    <button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button> <button class="btn" disabled title="CLI: algr decline ${p.id}">却下</button></div>`).join("") || `<div class="clear"><span class="mark">✓</span>なし</div>`;
+  const cmax = Math.max(1, ...r.candidates.map((c) => c.human + c.agent));
+  $("r-cands").innerHTML = `<div class="legend"><span><i style="background:var(--human)"></i>人が答えた</span><span><i style="background:var(--bad)"></i>根拠なし</span></div>` +
+    r.candidates.map((c) => `<div class="cand" data-tip="${esc(c.examples.slice(-3).map((e) => `${e.id} ${e.text} → ${e.answer}`).join(" / "))}">
+    <span class="mono">${esc(c.topic || "–")}</span>
+    <span class="stack">${c.human ? `<i style="width:${(c.human / cmax) * 100}%;background:var(--human)"></i>` : ""}${c.agent ? `<i style="width:${(c.agent / cmax) * 100}%;background:var(--bad)"></i>` : ""}</span>
+    <span class="mute" style="font-size:12px;text-align:right">${c.human + c.agent}</span></div>`).join("");
+}
+
+// 状態の置き場所。主経路を横に、人の番を上下に置く
+const POS = { intake: [90, 200], ready: [270, 200], "in-progress": [450, 200], review: [630, 200], done: [810, 200], "needs-decision": [360, 60], failed: [450, 345] };
+function renderFlow() {
+  const f = hist.flow, max = Math.max(1, ...f.edges.map((e) => e.count)), NW = 120, NH = 58;
+  const stages = data.flow.stages;
+  const clip = ([x, y], [tx, ty]) => {  // 箱の縁まで線を縮める
+    const dx = tx - x, dy = ty - y, t = Math.min(Math.abs((NW / 2 + 6) / (dx || 1e-9)), Math.abs((NH / 2 + 6) / (dy || 1e-9)));
+    return [x + dx * t, y + dy * t];
+  };
+  let edges = "", labels = "";
+  for (const e of f.edges) {
+    const a = POS[e.from], b = POS[e.to];
+    const forward = stages.indexOf(e.to) - stages.indexOf(e.from) === 1 && stages.includes(e.from);
+    const k = forward ? 0 : 46, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    const c = [(a[0] + b[0]) / 2 + (dy / len) * k, (a[1] + b[1]) / 2 - (dx / len) * k];
+    const p0 = clip(a, c), p1 = clip(b, c);
+    const cls = e.count === 0 ? "zero" : ["needs-decision"].includes(e.to) ? "human" : e.to === "failed" ? "bad" : "";
+    const w = e.count ? 1.5 + 7 * Math.sqrt(e.count / max) : 1.2;
+    edges += `<path class="edge ${cls}" d="M${p0} Q${c} ${p1}" stroke-width="${w}" marker-end="url(#arrow)" data-tip="${e.event} · ${e.from} → ${e.to} · ${e.count}"/>`;
+    if (e.count) {
+      const m = [0.25 * p0[0] + 0.5 * c[0] + 0.25 * p1[0], 0.25 * p0[1] + 0.5 * c[1] + 0.25 * p1[1]];
+      labels += `<g class="elbl"><rect x="${m[0] - 14}" y="${m[1] - 9}" width="28" height="17" rx="8"/><text x="${m[0]}" y="${m[1] + 4}" text-anchor="middle">${e.count}</text></g>`;
+    }
+  }
+  const nodes = f.states.map((s) => {
+    const [x, y] = POS[s.state], cls = s.state === "needs-decision" ? "human" : s.state;
+    return `<g class="node ${cls}" data-tip="${s.state} · いま ${s.now} · 滞在の中央値 ${dur(s.stay_median_s)}"><rect x="${x - NW / 2}" y="${y - NH / 2}" width="${NW}" height="${NH}" rx="10"/>
+      <text class="name" x="${x - NW / 2 + 10}" y="${y - 10}">${s.state}</text><text class="now" x="${x - NW / 2 + 10}" y="${y + 18}">${s.now}</text>
+      <text class="stay" x="${x + NW / 2 - 10}" y="${y + 18}" text-anchor="end">${s.stay_median_s === null ? "" : "⏱ " + dur(s.stay_median_s)}</text></g>`;
+  }).join("");
+  $("flow").innerHTML = `<svg viewBox="0 0 900 400"><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--mute)"/></marker></defs>${edges}${labels}${nodes}</svg>`;
+}
+
+const RANGES = { "24h": 86400, "7d": 7 * 86400, all: Infinity };
+function renderJobs() {
+  $("j-range").innerHTML = Object.keys(RANGES).map((k) => `<button class="${k === range ? "on" : ""}" data-range="${k}">${{ "24h": "24時間", "7d": "7日", all: "全部" }[k]}</button>`).join("");
+  $("j-legend").innerHTML = Object.entries(ROLE_COLOR).map(([r, c]) => `<span><i style="background:${c};height:8px"></i>${ROLE[r]}</span>`).join("");
+  const now = Date.parse(hist.now), all = hist.jobs.map((j) => ({ ...j, s: Date.parse(j.start), e: j.end ? Date.parse(j.end) : now }));
+  const from = RANGES[range] === Infinity ? Math.min(now - 3600e3, ...all.map((j) => j.s)) : now - RANGES[range] * 1000;
+  const span = now - from, pos = (t) => `${(Math.max(0, t - from) / span) * 100}%`;
+  const tasks = new Map();
+  for (const j of all.filter((j) => j.e >= from)) {
+    if (!tasks.has(j.task_id)) tasks.set(j.task_id, { id: j.task_id, title: j.title, jobs: [] });
+    tasks.get(j.task_id).jobs.push(j);
+  }
+  const rows = [...tasks.values()].map((t) => ({ ...t, first: Math.min(...t.jobs.map((j) => j.s)), tokens: t.jobs.reduce((a, j) => a + j.tokens, 0), busy: t.jobs.reduce((a, j) => a + (j.e - j.s) / 1000, 0) }))
+    .sort((a, b) => b.first - a.first).slice(0, 40);
+  const tmax = Math.max(1, ...rows.map((r) => r.tokens));
+  const ticks = Array.from({ length: 5 }, (_, i) => from + (span * (i + 0.5)) / 5);
+  const tickFmt = (t) => (span <= 86400e3 ? clock(new Date(t).toISOString()) : md(new Date(t).toISOString()));
+  $("jobs").innerHTML = `<div class="jrow head"><span></span><span class="title"></span><span class="ticks">${ticks.map((t) => `<span style="left:${pos(t)}">${tickFmt(t)}</span>`).join("")}</span><span>トークン</span><span class="busy">稼働</span></div>` +
+    (rows.map((r) => `<div class="jrow" data-id="${r.id}"><span class="mono mute">${r.id}</span><span class="title">${esc(r.title)}</span>
+      <span class="track"><b style="left:${pos(r.first)};width:calc(${pos(Math.max(...r.jobs.map((j) => j.e)))} - ${pos(r.first)})"></b>${r.jobs.map((j) => `<i class="${j.end ? "" : "running"}" style="left:${pos(j.s)};width:calc(${pos(j.e)} - ${pos(j.s)});background:${ROLE_COLOR[j.role]}" data-tip="${esc(`${j.job} · ${ROLE[j.role]} · ${dur((j.e - j.s) / 1000)} · ${j.tokens.toLocaleString()} tok${j.end ? "" : " · 実行中"}`)}"></i>`).join("")}</span>
+      <span class="use"><i class="bar" style="width:${(r.tokens / tmax) * 70}px;background:var(--s0)"></i>${r.tokens >= 1000 ? `${Math.round(r.tokens / 1000)}k` : r.tokens}</span>
+      <span class="age busy">${dur(r.busy)}</span></div>`).join("") || `<div class="empty">この期間のジョブはありません</div>`);
+}
+
+function renderView() {
+  if (view === "now" || !hist) return;
+  ({ trend: renderTrend, rules: renderRules, flow: renderFlow, jobs: renderJobs })[view]();
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-range]");
+  if (b) { range = b.dataset.range; renderJobs(); }
+});
+async function loadHistory() {
+  if (view === "now") return;
+  try { hist = await (await fetch("/api/history", { cache: "no-store" })).json(); renderView(); } catch { $("live").style.background = "var(--bad)"; }
+}
+function route() {
+  tip(null);
+  view = (location.hash.slice(1) || "now");
+  if (!$(`view-${view}`)) view = "now";
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.hash === `#${view}`));
+  renderView(); loadHistory();
+}
+addEventListener("hashchange", route);
+
+route();
 load();
 setInterval(load, 3000);
+setInterval(loadHistory, 10000);
 </script>
 </body>
 </html>

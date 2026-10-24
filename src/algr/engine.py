@@ -13,6 +13,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,10 @@ EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.d
 QUESTION_FIELDS = ("text", "topic", "options", "recommended")
 
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 @contextmanager
@@ -296,6 +301,7 @@ class Engine:
             task.jobs[role] = job.id
             self.tasks.save(task)
             self.executor.start(job)
+            self._log({"job_started": job.id, "task_id": task.id, "role": str(role), "ts": _now()})
 
     def poll(self) -> None:
         """走っているジョブの状態を実行アダプタに聞き、終わったものの結果でタスクを先へ進める。"""
@@ -307,7 +313,7 @@ class Engine:
                 with _retry_next_tick():
                     if self._collect(listed.id, role, job_id, status):
                         record = {"job": job_id, "task_id": listed.id, "role": role, "state": str(status.state)}
-                        self._log({**record, "usage": status.usage})
+                        self._log({**record, "usage": status.usage, "ts": _now()})
 
     def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> bool:
         """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。

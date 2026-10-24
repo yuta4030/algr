@@ -66,3 +66,42 @@ def test_server_serves_page_and_snapshot_on_localhost_only(engine):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_history_counts_transitions_rules_and_jobs(gated):
+    gated.decisions.add("auth: OAuth")
+    gated.create("login", questions=[{"topic": "auth", "text": "How?"}])
+    gated.create("ask", questions=[{"topic": "db", "text": "Where?"}])
+    run_until(gated, lambda: gated.tasks.get("I1").approved and str(gated.tasks.get("I2").state) == "needs-decision")
+    gated.resolve("I2", {"I2-1": "sqlite"})
+    run_until(gated, lambda: gated.tasks.get("I2").approved and not gated.tasks.get("I2").jobs)
+
+    h = ui.history(gated)
+    edges = {(e["event"], e["from"]): e["count"] for e in h["flow"]["edges"]}
+    assert edges[("task.started", "ready")] == 2
+    assert edges[("decision.requested", "intake")] == 1
+    assert edges[("task.reopened", "failed")] == 0  # 通っていない遷移も図に出す
+    states = {s["state"]: s for s in h["flow"]["states"]}
+    assert states["review"]["now"] == 2
+    assert states["needs-decision"]["stay_median_s"] is not None
+
+    rules = h["rules"]
+    assert [(r["id"], [u["id"] for u in r["uses"]]) for r in rules["rules"]] == [("R001", ["I1-1"])]
+    assert [(c["topic"], c["human"]) for c in rules["candidates"]] == [("db", 1)]
+    assert rules["proposals"] == [{"id": "P001", "rule": "db: sqlite", "source": "I2-1", "question": {"text": "Where?", "answer": "sqlite"}}]
+
+    assert {(j["task_id"], j["role"]) for j in h["jobs"]} >= {("I1", "intake"), ("I1", "implement"), ("I1", "review"), ("I2", "distill")}
+    assert all(j["end"] and j["state"] == "completed" for j in h["jobs"])
+    assert [b["tasks"] for b in h["trend"]["buckets"]] == [2]
+    assert h["trend"]["unit"] == "day"
+
+
+def test_trend_buckets_by_week_after_three_weeks():
+    def created(task_id, ts):
+        return {"name": "task.created", "task_id": task_id, "data": {"from": "", "source": "human"}, "ts": ts}
+
+    t = ui.trend([created("I1", "2026-09-01T10:00:00+00:00"), created("I2", "2026-09-30T10:00:00+00:00")])
+    assert t["unit"] == "week"
+    assert [(b["start"], b["tasks"]) for b in t["buckets"]] == [
+        ("2026-08-31", 1), ("2026-09-07", 0), ("2026-09-14", 0), ("2026-09-21", 0), ("2026-09-28", 1),
+    ]  # fmt: skip
