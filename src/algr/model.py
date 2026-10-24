@@ -88,6 +88,7 @@ class Task:
     jobs: dict[str, str] = field(default_factory=dict)  # 役 → 走っているジョブの ID
     runs: int = 0  # ジョブの採番。やり直しても同じ ID のジョブにならないようにする
     to_distill: list[str] = field(default_factory=list)  # 蒸留を待つ、人が答えた未決事項の ID
+    usage: dict[str, int] = field(default_factory=dict)  # このタスクのジョブが使ったトークン数の合計
     version: int = 0  # 保存の版。TaskAdapter.save が楽観ロックに使い、保存するたびに 1 つ進める
 
     @property

@@ -63,9 +63,12 @@ class DistillResult:
     rules: list[dict[str, str]] = field(default_factory=list)
 
 
-def job_input(role: Role, task: Task, rules: list[Rule]) -> dict[str, Any]:
-    """ジョブに添える入力。エージェントは自分で判断ストアを引いてもよいが、ここに今のルールを渡しておく。"""
-    data: dict[str, Any] = {"rules": [{"id": r.id, "text": r.text} for r in rules]}
+def job_input(role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] | None = None) -> dict[str, Any]:
+    """ジョブに添える入力。エージェントは自分で判断ストアを引いてもよいが、ここに今のルールを渡しておく。
+
+    agent は設定の [agents.<役>]（model、max_tokens など）。どう使うかは実行アダプタが決める。
+    """
+    data: dict[str, Any] = {"rules": [{"id": r.id, "text": r.text} for r in rules], "agent": dict(agent or {})}
     if role == Role.IMPLEMENT:
         # やり直しは一から作らず、前の PR と指摘から差分だけ直す
         data["previous"] = {"pr": task.pr, "decisions": [asdict(d) for d in task.decisions]}

@@ -3,6 +3,8 @@
 エージェントはすべて別プロセスのジョブとして走るので、tick を回して結果を待つ。
 """
 
+import json
+
 from conftest import run_until, state
 
 from algr.model import Event, State
@@ -76,8 +78,9 @@ def test_questions_and_decisions_are_kept_apart(engine):
 def test_events_are_logged_to_state_dir(engine, repo):
     engine.create("No questions")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
-    lines = (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [line.split('"name": "')[1].split('"')[0] for line in lines] == [
+    records = [json.loads(line) for line in (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["role"] for r in records if "job" in r] == ["intake", "implement", "review"]  # ジョブの記録も残る
+    assert [r["name"] for r in records if "name" in r] == [
         "task.created",
         "task.ready",
         "task.started",
@@ -339,3 +342,17 @@ def test_follow_up_with_unknown_dependency_fails_the_job(engine):
     engine.create("spawn-bad")
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
     assert "unknown tasks: I99" in engine.notifier.sent()[-1]["message"]
+
+
+def test_token_usage_and_agent_settings(engine, repo):
+    engine.agents = {"implement": {"model": "big", "max_tokens": 5000}}
+    engine.create("metered")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    # 起票・実装・レビューの 3 つのジョブの分を足し上げる
+    assert engine.tasks.get("I1").usage == {"input_tokens": 300, "output_tokens": 30}
+    job = json.loads((engine.executor.dir / "I1.implement.2" / "job.json").read_text(encoding="utf-8"))
+    assert job["input"]["agent"] == {"model": "big", "max_tokens": 5000}
+
+    from algr import stats
+
+    assert stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))["tokens_per_task"] == 330.0

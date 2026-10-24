@@ -32,7 +32,8 @@ algr merge I3                                      # マージのゲート（flo
 ```
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
-STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値を出します。
+STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値、
+タスクあたりのトークン数を出します。`events.jsonl` にはイベントのほか、終わったジョブ（`job`）と hook の失敗（`hook_error`）も残ります。
 
 `algr tick` は 1 周だけ回します（トリガーを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する）。
 
@@ -142,6 +143,10 @@ max_parallel = 2                        # ジョブを同時に走らせる数
 use = ".algr/adapters/slack.py:Slack"   # リポジトリに置いたアダプタ
 channel = "#dev"
 
+[agents.review]
+model = "small"                         # 役ごとの設定。ジョブの input.agent として実行アダプタに渡す
+max_tokens = 20000
+
 [hooks]
 "task.done" = [".algr/hooks.py:on_done"]  # hook(event, engine)
 "*" = [".algr/hooks.py:log"]              # すべてのイベント
@@ -159,6 +164,7 @@ channel = "#dev"
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。
+結果に `"usage": {"input_tokens", "output_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、`algr stats` の `tokens_per_task` に出します。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。
 
 ## 開発

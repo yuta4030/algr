@@ -9,6 +9,7 @@
 - "slow" を含む：結果を出す前に、ファイル stop ができるまで待つ
 - "flaky" を含む：ファイル flaky-ok ができるまで終了コード 1
 - "fixme" を含む：修正依頼（feedback）を受けてから出した PR は "-fixed" で終わる
+- "metered" を含む：どの役も使ったトークン数（usage）を結果に添える
 - "spawn" を含む：このタスクに依存する別件を起票して PR を出す。"spawn-bad" は無いタスクに依存させる
 
 レビューの役も、題名で振る舞いを変える。
@@ -33,6 +34,7 @@ decided = {q["topic"] for q in task["questions"] if q["answer"] is not None}
 
 
 def write(result):
+    result = {**result, "usage": {"input_tokens": 100, "output_tokens": 10}} if "metered" in title else result
     with open(os.environ["ALGR_RESULT_FILE"], "w", encoding="utf-8") as f:
         json.dump(result, f)
 

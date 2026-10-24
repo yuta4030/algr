@@ -19,10 +19,10 @@ ASKED_EVENTS = ("decision.requested", "review.escalated")
 
 
 def load(path: Path) -> list[dict[str, Any]]:
+    """イベントのほかに、ジョブの記録（"job"）と hook の失敗（"hook_error"）も含めて返す。"""
     if not path.exists():
         return []
-    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    return [r for r in records if "name" in r]  # hook_error などの記録は除く
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _rate(part: int, whole: int) -> float | None:
@@ -35,7 +35,9 @@ def _is_human(event: dict[str, Any]) -> bool:
     return event["name"] in HUMAN_EVENTS
 
 
-def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
+    events = [r for r in records if "name" in r]
+    jobs = [r for r in records if "job" in r]
     by_task: dict[str, list[dict[str, Any]]] = {}
     for e in events:
         by_task.setdefault(e["task_id"], []).append(e)
@@ -68,4 +70,5 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
         "stp_rate": _rate(len(touchless), len(done)),
         "interventions_per_task": _rate(interventions, created),
         "decision_wait_median_s": median(waits) if waits else None,
+        "tokens_per_task": _rate(sum(sum(j.get("usage", {}).values()) for j in jobs), created),
     }

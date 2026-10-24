@@ -54,6 +54,7 @@ class Engine:
         max_parallel: int = 1,
         max_rework: int = 2,
         merge_gate: bool = False,
+        agents: dict[str, dict[str, Any]] | None = None,
         event_log: Path | None = None,
     ) -> None:
         self.tasks = tasks
@@ -65,6 +66,7 @@ class Engine:
         self.max_parallel = max_parallel
         self.max_rework = max_rework
         self.merge_gate = merge_gate
+        self.agents = agents or {}
         self.event_log = event_log
         self.events: list[Event] = []
         self._pending: deque[Event] = deque()
@@ -85,6 +87,7 @@ class Engine:
             max_parallel=config.max_parallel,
             max_rework=config.max_rework,
             merge_gate=config.merge_gate,
+            agents=config.agents(),
             event_log=config.ctx.path(".algr/state/events.jsonl"),
         )
 
@@ -257,7 +260,7 @@ class Engine:
             if role in task.jobs or self.executor.capacity() <= 0:
                 continue
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
-            job.input = job_input(role, task, self.decisions.rules())
+            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)))
             if role == Role.DISTILL:
                 task.to_distill = []
             task.jobs[role] = job.id
@@ -272,18 +275,25 @@ class Engine:
                 if status.state in (RunState.RUNNING, RunState.BLOCKED):
                     continue
                 with _retry_next_tick():
-                    self._collect(listed.id, role, job_id, status)
+                    if self._collect(listed.id, role, job_id, status):
+                        record = {"job": job_id, "task_id": listed.id, "role": role, "state": str(status.state)}
+                        self._log({**record, "usage": status.usage})
 
-    def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> None:
-        """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。"""
+    def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> bool:
+        """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。
+
+        受け取ったら True、もう受け取り済みなら False を返す。
+        """
         # 前のジョブの処理でタスクが書き換わっているかもしれないので、読み直してから進める
         task = self.tasks.get(task_id)
         if task.jobs.get(role) != job_id:
-            return
+            return False
         del task.jobs[role]
+        for key, n in status.usage.items():
+            task.usage[key] = task.usage.get(key, 0) + n
         if role != Role.DISTILL and ROLE_FOR_STATE.get(task.state) != role:
             self.tasks.save(task)  # 状態が先に進んだあとで届いた古い結果は捨てる
-            return
+            return True
         result = None
         if status.state == RunState.COMPLETED:
             try:
@@ -305,6 +315,7 @@ class Engine:
                     priority=new.get("priority", 0),
                     depends=new.get("depends", []),
                 )
+        return True
 
     def _check_depends(self, tasks: list[dict[str, Any]]) -> None:
         known = {t.id for t in self.tasks.list()}

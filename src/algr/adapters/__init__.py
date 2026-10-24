@@ -74,6 +74,8 @@ class RunStatus:
     # 完了時の結果。形は役ごとに決まっている（algr.agents を参照）
     result: dict[str, Any] = field(default_factory=dict)
     message: str = ""
+    # 使ったトークン数（例：{"input_tokens": 1200, "output_tokens": 300}）。分かる実行アダプタだけが返す
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 @runtime_checkable

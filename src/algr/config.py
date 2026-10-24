@@ -16,6 +16,7 @@ from typing import Any
 
 from algr.adapters import KINDS, Context
 from algr.flow import HOOK_POINTS
+from algr.model import Role
 
 CONFIG_FILE = "config.toml"
 
@@ -29,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
         "notify": {"use": "stub"},
     },
     "hooks": {},
+    "agents": {},  # 役ごとの設定（model、max_tokens など）。ジョブの input.agent として実行アダプタに渡す
 }
 
 BUILTIN_ADAPTERS = {
@@ -140,6 +142,12 @@ class Config:
     @property
     def max_parallel(self) -> int:
         return int(self.data["flow"]["max_parallel"])
+
+    def agents(self) -> dict[str, dict[str, Any]]:
+        for role in self.data["agents"]:
+            if role not in {str(r) for r in Role}:
+                raise ConfigError(f"agents: unknown role {role!r}")
+        return {role: dict(options) for role, options in self.data["agents"].items()}
 
     @property
     def max_rework(self) -> int:
