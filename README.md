@@ -53,14 +53,15 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 
 ## フロー
 
-タスクは 7 つの状態を移り、遷移ごとにイベントが 1 つ出ます。イベントがそのまま hook の差し込み口です。
+タスクは 8 つの状態を移り、遷移ごとにイベントが 1 つ出ます。イベントがそのまま hook の差し込み口です。
 
 ```text
 主経路     intake ─▶ ready ─▶ in-progress ─▶ review ─▶ done
+承認       review ─▶ approved ─▶ done（マージのゲートのとき。approved から出るのは done と failed だけ）
 人に聞く   intake / review ─▶ needs-decision ─▶ intake
 差し戻し   in-progress ─▶ intake（起票エージェントがルールを当て、埋まらなければ人に聞く）
 修正依頼   review ─▶ in-progress（flow.max_rework 回まで。超えたら failed）
-失敗       intake / in-progress / review ─▶ failed ─▶ intake（人が reopen する）
+失敗       intake / in-progress / review / approved ─▶ failed ─▶ intake（人が reopen する）
 ```
 
 人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の承認済みの review だけです。
@@ -80,11 +81,12 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 | `task.submitted` | `pr` | レビューエージェントを起動する |
 | `review.changes_requested` | `changes`（修正依頼） | 実装エージェントを起動する（前の PR と指摘を渡す） |
 | `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
+| `review.approved` | `pr` | マージのゲート（`flow.merge = "human"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る） |
 | `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録する |
 | `task.failed` | `role`、`message` | 人に上げる |
 | `task.reopened` | `note` | 起票エージェントを起動する |
 
-レビューが通ると、既定ではそのまま `task.done` になります。`flow.merge = "human"` にすると、タスクは承認済み（`approved`）のまま review に留まり、
+レビューが通ると、既定ではそのまま `task.done` になります。`flow.merge = "human"` にすると、タスクは`approved` 状態で止まり、
 人に知らせて `algr merge`（またはトリガーの `task.done`）を待ちます。人が答えた未決事項は人のゲートを通っているので、再レビューで異議が出ても蒸し返しません。
 
 トリガーが外から送れるのは、人の操作と同じ `task.created` / `decision.resolved` / `task.reopened` / `task.done` だけです。

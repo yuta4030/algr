@@ -23,7 +23,7 @@ PAGE = Path(__file__).with_name("ui.html")
 # 主経路。needs-decision と failed は、主経路のどこで止まっているかで見せる
 STAGES = (State.INTAKE, State.READY, State.IN_PROGRESS, State.REVIEW, State.DONE)
 # 寄り道の状態を、主経路のどの段に置くか
-DETOUR = {State.NEEDS_DECISION: State.INTAKE}
+DETOUR = {State.NEEDS_DECISION: State.INTAKE, State.APPROVED: State.REVIEW}
 
 
 def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]) -> dict[str, Any]:
@@ -36,7 +36,7 @@ def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]
         stage = State(last["data"]["from"]) if last else State.INTAKE
         failure = {"role": last["data"]["role"], "message": last["data"]["message"]} if last else None
     blocked_by = [d for d in task.depends if states.get(d) != State.DONE] if task.state == State.READY else []
-    if task.state in (State.NEEDS_DECISION, State.FAILED) or (task.state == State.REVIEW and task.approved):
+    if task.state in (State.NEEDS_DECISION, State.FAILED) or task.state == State.APPROVED:
         waiting = "human"
     elif task.state == State.DONE:
         waiting = "none"
@@ -67,7 +67,7 @@ def _actions(task: Task) -> list[dict[str, str]]:
         return [{"name": "answer", "cli": f"algr answer {task.id} {answers}"}]
     if task.state == State.FAILED:
         return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}]
-    if task.state == State.REVIEW and task.approved:
+    if task.state == State.APPROVED:
         return [{"name": "merge", "cli": f"algr merge {task.id}"}]
     return []
 

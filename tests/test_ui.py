@@ -29,7 +29,7 @@ def test_snapshot_shows_who_has_each_task(gated):
     gated.create("merge me")
     gated.create("fail")
     gated.create("later", depends=["I2"])
-    run_until(gated, lambda: {str(t.state) for t in gated.tasks.list()} >= {"needs-decision", "failed"} and gated.tasks.get("I2").approved)
+    run_until(gated, lambda: {str(t.state) for t in gated.tasks.list()} >= {"needs-decision", "failed", "approved"})
 
     tasks = by_id(ui.snapshot(gated))
     assert tasks["I1"]["progress"] | {"since": None, "created": None} == {
@@ -72,9 +72,9 @@ def test_history_counts_transitions_rules_and_jobs(gated):
     gated.decisions.add("auth: OAuth")
     gated.create("login", questions=[{"topic": "auth", "text": "How?"}])
     gated.create("ask", questions=[{"topic": "db", "text": "Where?"}])
-    run_until(gated, lambda: gated.tasks.get("I1").approved and str(gated.tasks.get("I2").state) == "needs-decision")
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "approved" and str(gated.tasks.get("I2").state) == "needs-decision")
     gated.resolve("I2", {"I2-1": "sqlite"})
-    run_until(gated, lambda: gated.tasks.get("I2").approved and not gated.tasks.get("I2").jobs)
+    run_until(gated, lambda: str(gated.tasks.get("I2").state) == "approved" and not gated.tasks.get("I2").jobs)
 
     h = ui.history(gated)
     edges = {(e["event"], e["from"]): e["count"] for e in h["flow"]["edges"]}
@@ -82,7 +82,7 @@ def test_history_counts_transitions_rules_and_jobs(gated):
     assert edges[("decision.requested", "intake")] == 1
     assert edges[("task.reopened", "failed")] == 0  # 通っていない遷移も図に出す
     states = {s["state"]: s for s in h["flow"]["states"]}
-    assert states["review"]["now"] == 2
+    assert states["approved"]["now"] == 2
     assert states["needs-decision"]["stay_median_s"] is not None
 
     rules = h["rules"]

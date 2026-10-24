@@ -8,8 +8,8 @@ def task(state, **kw):
     return Task(id="I1", title="t", state=state, **kw)
 
 
-def test_seven_states_and_one_event_per_transition():
-    assert len(State) == 7
+def test_eight_states_and_one_event_per_transition():
+    assert len(State) == 8
     assert {target for _, target in flow.TRANSITIONS.values()} == set(State)
 
 

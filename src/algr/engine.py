@@ -188,16 +188,15 @@ class Engine:
         task = self.tasks.get(task_id)
         if task.state != State.FAILED:
             raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
-        task.reworks, task.approved = 0, False
+        task.reworks = 0
         self.emit("task.reopened", task, note=note)
         return self.tasks.get(task_id)
 
     def merge(self, task_id: str) -> Task:
         """マージのゲートで、人が承認済みのタスクをマージする（マージされたと記録する）。"""
         task = self.tasks.get(task_id)
-        if task.state != State.REVIEW or not task.approved:
+        if task.state != State.APPROVED:
             raise flow.TransitionError(f"{task_id} is not approved and waiting for merge")
-        task.approved = False
         self.emit("task.done", task, pr=task.pr, merged_by="human")
         return self.tasks.get(task_id)
 
@@ -281,7 +280,7 @@ class Engine:
     # --- ジョブ ------------------------------------------------------------
 
     def _wanted(self, task: Task) -> list[Role]:
-        roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE and not task.approved else []
+        roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE else []
         if task.to_distill:
             roles.append(Role.DISTILL)
         return roles
@@ -444,9 +443,7 @@ class Engine:
         if not self.merge_gate:
             self.emit("task.done", task, pr=task.pr, merged_by="auto")
             return
-        task.approved = True
-        self.tasks.save(task)
-        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
+        self.emit("review.approved", task, pr=task.pr)
 
     def _request_changes(self, task: Task, changes: list[str]) -> None:
         if task.reworks >= self.max_rework:
@@ -505,6 +502,9 @@ class Engine:
 
     def _on_task_submitted(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # レビューエージェント
+
+    def _on_review_approved(self, task: Task, event: Event) -> None:
+        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
 
     def _on_review_escalated(self, task: Task, event: Event) -> None:
         self.notifier.notify(task, f"{task.id} was escalated in review: {' '.join(event.data['questions'])}")

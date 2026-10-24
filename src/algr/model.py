@@ -14,6 +14,7 @@ class State(StrEnum):
     READY = "ready"
     IN_PROGRESS = "in-progress"
     REVIEW = "review"
+    APPROVED = "approved"
     DONE = "done"
     FAILED = "failed"
 
@@ -81,7 +82,6 @@ class Task:
     questions: list[Question] = field(default_factory=list)
     decisions: list[Decision] = field(default_factory=list)
     pr: str | None = None
-    approved: bool = False  # レビューが通り、人のマージを待っている（マージのゲートを置いたときだけ）
     feedback: list[str] = field(default_factory=list)  # レビューの修正依頼。次の実装に渡す
     reworks: int = 0  # レビューから実装に戻した回数。上限を超えたら failed にする
     seq: int = 0  # 決断 ID の採番。未決事項と判断で共有し、消しても番号は使い回さない
@@ -137,7 +137,11 @@ class Task:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Task:
         data = dict(data)
-        data["state"] = State(data.get("state", State.INTAKE))
+        state = State(data.get("state", State.INTAKE))
+        # 旧形式：承認済みは state=review と approved=true で持っていた
+        if data.pop("approved", False) and state == State.REVIEW:
+            state = State.APPROVED
+        data["state"] = state
         data["questions"] = [Question(**q) for q in data.get("questions", [])]
         data["decisions"] = [Decision(**d) for d in data.get("decisions", [])]
         return cls(**data)
