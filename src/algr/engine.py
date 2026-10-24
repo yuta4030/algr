@@ -123,10 +123,9 @@ class Engine:
         questions: list[dict[str, Any]] | None = None,
         source: str = "human",
         priority: int = 0,
-        budget: int | None = None,
     ) -> Task:
         """意図を受け取り、タスクを起票に流す。questions は人が最初から分かっている未決事項。"""
-        task = self.tasks.create(Task(id="", title=title, purpose=purpose, source=source, priority=priority, budget=budget))
+        task = self.tasks.create(Task(id="", title=title, purpose=purpose, source=source, priority=priority))
         for q in questions or []:
             task.add_question(**q)
         self.emit("task.created", task, source=source)

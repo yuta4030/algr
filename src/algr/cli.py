@@ -108,7 +108,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--purpose", default="")
     p.add_argument("--question", "-q", action="append", default=[], type=_question, help='"topic: text" or "text"')
     p.add_argument("--priority", type=int, default=0)
-    p.add_argument("--budget", type=int, default=None, help="token budget")
     p.add_argument("--source", choices=["human", "auto"], default="human")
 
     p = sub.add_parser("list", help="list tasks")
@@ -151,7 +150,6 @@ def run(args: argparse.Namespace) -> Any:
             questions=args.question,
             source=args.source,
             priority=args.priority,
-            budget=args.budget,
         )
     if args.command == "list":
         return engine.tasks.list(State(args.state) if args.state else None)

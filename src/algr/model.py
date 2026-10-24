@@ -77,7 +77,6 @@ class Task:
     purpose: str = ""
     source: str = "human"  # "human" | "auto"
     priority: int = 0  # 大きいほど先に配車する
-    budget: int | None = None  # トークン予算。フェーズ0では持つだけ
     questions: list[Question] = field(default_factory=list)
     decisions: list[Decision] = field(default_factory=list)
     pr: str | None = None
