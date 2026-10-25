@@ -4,6 +4,7 @@
 """
 
 import json
+import time
 
 from conftest import run_until, state
 
@@ -369,6 +370,20 @@ def test_failed_dependency_is_reported_with_its_dependents(engine):
     engine.create("after", depends=["I1"])
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
     assert "I1 failed: exit 1 (blocks I2)" in [m["message"] for m in engine.notifier.sent()]
+
+
+def test_distill_cannot_retire_unknown_rules(engine, repo):
+    task = engine.request_distill("anything")
+    # ジョブが終わるのを tick せずに待ち、結果を知らないルールを外す提案に差し替える
+    run = engine.executor.dir / task.jobs["distill"]
+    deadline = time.monotonic() + 10
+    while not (run / "exit").exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    retire = [{"rule_id": "R404", "reason": "x", "source": "I1-1"}]
+    (run / "result.json").write_text(json.dumps({"rules": [], "retire": retire}), encoding="utf-8")
+    engine.tick()
+    assert engine.decisions.proposals() == []
+    assert engine.notifier.sent()[-1]["message"] == "I1 distill failed: bad result from distill: retire unknown rules: R404"
 
 
 def test_agents_can_file_follow_up_tasks(engine):

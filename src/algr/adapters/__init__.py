@@ -129,12 +129,19 @@ class DecisionStore(Protocol):
         """1 行ルールの追加を提案し、提案の ID を返す。マージ（人の確認）をもってルールになる。同じ提案は二重に出さない。"""
         ...
 
+    def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
+        """ルールを外す提案をし、提案の ID を返す。外すのは人の accept を通したときだけ。同じルールの提案は二重に出さない。"""
+        ...
+
     def proposals(self) -> list[dict[str, str]]:
-        """まだ受け入れも却下もされていない提案（{"id", "rule", "source"}）。"""
+        """まだ受け入れも却下もされていない提案。
+
+        足す提案は {"id", "rule", "source"}、外す提案は {"id", "rule_id", "reason", "source"}。
+        """
         ...
 
     def accept(self, proposal_id: str) -> str:
-        """人が提案を受け入れてルールにし、ルールの ID を返す。"""
+        """人が提案を受け入れ、足す提案ならルールにし、外す提案ならルールを外す。足した（外した）ルールの ID を返す。"""
         ...
 
     def reject_proposal(self, proposal_id: str) -> None:

@@ -21,6 +21,8 @@ elif command == "add":
     rules.append({"id": rule_id, "rule": args[0], "parent": "N000"})
     rules_file.write_text(json.dumps(rules), encoding="utf-8")
     print(rule_id)
+elif command == "retire":
+    rules_file.write_text(json.dumps([r for r in rules if r["id"] != args[0]]), encoding="utf-8")
 elif command == "apply" and "R404" in args:
     print("error: unknown rule: R404", file=sys.stderr)
     sys.exit(1)

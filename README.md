@@ -29,9 +29,14 @@ algr run                                           # 起票 → 実装 → レ�
 algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
-algr proposals                                     # 蒸留エージェントのルール提案
-algr accept P001                                   # 提案をルールにする（algr decline で却下）
+algr distill "日付は UTC で保存する" --topic time  # タスクの外で言った方針を、蒸留エージェントに依頼する
+algr proposals                                     # 蒸留エージェントのルール提案（足す提案と外す提案）
+algr accept P001                                   # 提案をルールにする。外す提案ならルールを外す（algr decline で却下）
 ```
+
+`algr distill` は方針を `source: policy` のタスクに乗せ、蒸留のジョブだけを出します。タスクは最初から done で、起票・実装・レビューには流れず、
+イベントも出しません（`algr stats` にも数えません）。蒸留エージェントは既存のルールと突き合わせ、同じ趣旨なら提案せず、
+ぶつかるなら新しいルールと、古いルールを外す提案を出します。どちらも人が `algr accept` するまでルールには効きません。
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
 STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値、
@@ -126,7 +131,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
 | `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
-| `distill` | 人が答えた未決事項がある時 | `{"rules": [{"rule", "source"}]}` |
+| `distill` | 人が答えた未決事項がある時（`algr distill` の方針を含む） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
 別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
@@ -220,7 +225,7 @@ dir = ".algr/decisions"                 # rules.json と usage.jsonl を置く�
 command = ["k2down"]                    # 省略時。uvx で動かすなら ["uvx", "--from", "git+https://github.com/yuta4030/k2down", "k2down"]
 ```
 
-蒸留エージェントの提案は `.algr/state/proposals.json` に積み、`algr accept` したときに `k2down add` で rules.json に書きます。
+蒸留エージェントの提案は `.algr/state/proposals.json` に積み、`algr accept` したときに `k2down add`（外す提案なら `k2down retire`）で rules.json に書きます。
 rules.json の差分を PR にしてマージすることを、人の確認とします。
 
 ## 開発
