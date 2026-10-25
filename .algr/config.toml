@@ -16,7 +16,9 @@ use = "k2down"          # .algr/decisions/ に rules.json と usage.jsonl がで
 
 [agents.default]
 max_budget_usd = 2
-args = ["--allowedTools", "Bash(git:*)", "Bash(uv:*)", "Bash(uvx:*)", "Bash(python:*)"]
+# Windows の Claude Code はシェルが PowerShell ツールなので、同じ許可を PowerShell(...) にも書く
+args = ["--allowedTools", "Bash(git:*)", "Bash(uv:*)", "Bash(uvx:*)", "Bash(python:*)",
+        "PowerShell(git:*)", "PowerShell(uv:*)", "PowerShell(uvx:*)", "PowerShell(python:*)"]
 
 [agents.implement]
 permission_mode = "acceptEdits"
