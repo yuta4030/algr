@@ -80,6 +80,8 @@ class RunStatus:
     message: str = ""
     # 使ったトークン数（例：{"input_tokens": 1200, "output_tokens": 300}）。分かる実行アダプタだけが返す
     usage: dict[str, int] = field(default_factory=dict)
+    # エージェントとの往復の回数。トークン数とは種類が違うので usage に混ぜない。分かる実行アダプタだけが返す
+    turns: int = 0
 
 
 @runtime_checkable

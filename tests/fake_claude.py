@@ -25,4 +25,4 @@ if "agent-error" in job["task"]["title"]:
 result = fake_agent.run(job)
 answer = "結果です。\n\n```json\n" + json.dumps(result, ensure_ascii=False) + "\n```\n"
 usage = {"input_tokens": 10, "cache_read_input_tokens": 90, "output_tokens": 5}
-print(json.dumps({"type": "result", "is_error": False, "result": answer, "usage": usage}))
+print(json.dumps({"type": "result", "is_error": False, "result": answer, "usage": usage, "num_turns": 4}))

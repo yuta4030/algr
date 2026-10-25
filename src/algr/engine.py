@@ -312,7 +312,7 @@ class Engine:
                 with _retry_next_tick():
                     if self._collect(listed.id, role, job_id, status):
                         record = {"job": job_id, "task_id": listed.id, "role": role, "state": str(status.state)}
-                        self._log({**record, "usage": status.usage, "ts": _now()})
+                        self._log({**record, "usage": status.usage, "turns": status.turns, "ts": _now()})
 
     def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> bool:
         """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。

@@ -87,6 +87,7 @@ def run(job: dict[str, Any], root: Path) -> dict[str, Any]:
     usage = out.get("usage") or {}
     # Claude の API と同じ意味で持つ。input_tokens はキャッシュを除いた分で、キャッシュの読み込みと書き込みは別に数える
     result["usage"] = {k: int(usage.get(k) or 0) for k in USAGE_KINDS}
+    result["turns"] = int(out.get("num_turns") or 0)
     return result
 
 
