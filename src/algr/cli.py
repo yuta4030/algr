@@ -253,7 +253,15 @@ def _to_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
+def _tolerate_unencodable() -> None:
+    # Windows のコンソール（cp932 など）で出せない文字は ? に置き換え、出力の途中で落とさない
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _tolerate_unencodable()
     args = build_parser().parse_args(argv)
     try:
         result = run(args)

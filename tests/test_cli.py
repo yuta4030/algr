@@ -46,6 +46,18 @@ def test_text_output(repo, capsys):
     assert capsys.readouterr().out == "I1 decision.requested\n"
 
 
+def test_unencodable_output(repo, monkeypatch):
+    # cp932 のコンソールで出せない文字（U+2013）を含んでも落ちず、? に置き換えて出す
+    import io
+    import sys
+
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp932", newline="\n")
+    monkeypatch.setattr(sys, "stdout", out)
+    assert main(["-C", str(repo), "new", "日付 – 範囲"]) == 0
+    out.flush()
+    assert out.buffer.getvalue().decode("cp932") == "I1 [intake] 日付 ? 範囲\n"
+
+
 def test_errors(algr):
     algr("new", "t")
     assert algr("answer", "I1", "I1-1=x")[2] == {"error": "I1 is intake, not waiting for a decision"}
