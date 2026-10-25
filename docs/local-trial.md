@@ -117,9 +117,9 @@ algr answer I1 I1-1="TypeError を投げる"          # 残りの未決事項も
 
 ```sh
 algr proposals                                   # 蒸留エージェントのルール提案
-algr accept P001                                 # 提案をルールにする（k2down add）
+algr accept P-a2m4n                              # 提案をルールにする（k2down accept）
 k2down --dir .algr/decisions list
-git add .algr/decisions && git commit -m "rule: P001"   # ルールの PR のマージにあたる
+git add .algr/decisions && git commit -m "rule: P-a2m4n"   # ルールの PR のマージにあたる
 
 git log --oneline main..algr/I1 && git diff main...algr/I1
 git merge algr/I1
@@ -133,7 +133,7 @@ algr new "割り算の関数 div を足す" --purpose "calc に div(a, b) を足
   -q "error: 数値でない入力が来たときどうするか"
 ```
 
-`decision.requested` を挟まずに実装まで進めば成功。`algr show I2` で、その未決事項が `[R001]` で埋まっていることを見る。
+`decision.requested` を挟まずに実装まで進めば成功。`algr show I2` で、その未決事項が `[R-h4n8c]` のようなルール ID で埋まっていることを見る。
 レビューが通ったら 1 件目と同じようにマージする。
 
 ## 5. 振り返る

@@ -93,7 +93,7 @@ def test_distill_a_policy_and_retire_the_rule_it_replaces(algr, repo, capsys):
     assert (task["source"], task["state"], list(task["jobs"])) == ("policy", "done", ["distill"])
     algr("run", "--interval", "0.02", "--timeout", "10")
     _, data, _ = algr("proposals")
-    assert data["proposals"] == [{"id": "P001", "rule": "db: sqlite", "source": "I1-1"}]
+    assert data["proposals"] == [{"id": "P001", "kind": "add", "rule": "db: sqlite", "decision": "I1-1"}]
     algr("accept", "P001")
 
     # 同じ方針はもうルールにあるので、提案は出ない

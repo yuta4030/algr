@@ -19,5 +19,5 @@
 - 異議も指摘も無ければ `approved: true`
 
 ```json
-{"approved": false, "objections": {"I12-3": "R004 は保存の形式のルールで、表示には当たらない"}, "changes": ["日付の境界のテストが落ちている"]}
+{"approved": false, "objections": {"I12-3": "R-k7m2q は保存の形式のルールで、表示には当たらない"}, "changes": ["日付の境界のテストが落ちている"]}
 ```

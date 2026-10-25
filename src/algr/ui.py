@@ -203,7 +203,7 @@ def rule_usage(tasks: list[Task], rules: list[dict[str, str]], proposals: list[d
         "rules": [{**r, "uses": used.get(r["id"], [])} for r in rules],
         # 人が何度も答えている、またはエージェントが根拠なしで決めている topic は、ルールにする候補
         "candidates": sorted(topics.values(), key=lambda c: -(c["human"] + c["agent"])),
-        "proposals": [{**p, "question": questions.get(p.get("source", ""))} for p in proposals],
+        "proposals": [{**p, "question": questions.get(p.get("decision", ""))} for p in proposals],
     }
 
 

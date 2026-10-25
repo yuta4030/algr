@@ -39,24 +39,29 @@ def test_records_go_to_the_k2down_cli(store):
 
 
 def test_proposals_become_rules_when_accepted(store):
-    assert store.propose("db: sqlite", "I1-3") == "P001"
-    assert store.propose("db: sqlite", "I2-1") == "P001"  # 冪等
-    assert store.propose("auth: OAuth", "I1-1") == "P002"
-    store.reject_proposal("P002")
-    assert store.accept("P001") == "R001"
+    assert store.proposals() == []  # proposals.json がまだ無ければ k2down を呼ばない
+    assert store.propose("db: sqlite", "I1-3") == "P-001"
+    assert store.propose("db: sqlite", "I2-1") == "P-001"  # 冪等
+    assert store.propose("auth: OAuth", "I1-1") == "P-002"
+    store.reject_proposal("P-002")
+    assert store.accept("P-001") == "R001"
     assert store.proposals() == []
     assert [(r.id, r.text) for r in store.rules()] == [("R001", "db: sqlite")]  # 内部ノードは除く
+    assert calls(store)[0] == ["propose", "add", "db: sqlite", "--decision", "I1-3", "--json"]
+    with pytest.raises(K2downError, match="unknown proposal: P-002"):
+        store.accept("P-002")
 
 
 def test_retire_proposal_retires_the_rule_when_accepted(store):
     store.propose("db: sqlite", "I1-3")
-    store.accept("P001")
-    assert store.propose_retire("R001", "db: postgres\nとぶつかる", "I2-1") == "P001"
-    assert store.propose_retire("R001", "again", "I3-1") == "P001"  # 冪等
-    assert store.proposals() == [{"id": "P001", "rule_id": "R001", "reason": "db: postgres とぶつかる", "source": "I2-1"}]
+    store.accept("P-001")
+    assert store.propose_retire("R001", "db: postgres\nとぶつかる", "I2-1") == "P-002"
+    assert store.propose_retire("R001", "again", "I3-1") == "P-002"  # 冪等
+    # k2down は外す理由を出どころ（source）に持つ。アダプタは reason に戻して返す
+    assert store.proposals() == [{"id": "P-002", "kind": "retire", "rule_id": "R001", "decision": "I2-1", "reason": "db: postgres とぶつかる"}]
     assert store.rules() != []  # accept までは外れない
-    assert store.accept("P001") == "R001"
-    assert calls(store)[-1] == ["retire", "R001"]
+    assert store.accept("P-002") == "R001"
+    assert calls(store)[-1] == ["accept", "P-002", "--json"]
     assert store.rules() == [] and store.proposals() == []
 
 
@@ -75,7 +80,7 @@ def test_loop_with_k2down(repo, home):
     run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
-    assert engine.decisions.accept("P001") == "R001"
+    assert engine.decisions.accept("P-001") == "R001"
     engine.create("Add signup", questions=[{"text": "How?", "topic": "auth"}])
     run_until(engine, lambda: state(engine, "I2") == State.DONE)
     assert engine.tasks.get("I2").question("I2-1").rule_ids == ["R001"]

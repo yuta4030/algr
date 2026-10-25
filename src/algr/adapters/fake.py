@@ -225,7 +225,7 @@ class LocalProcess:
 class RuleFile:
     """1 行ルールと判断の記録をファイルで持つ。k2down の代わりに使うフェイクの判断ストア。
 
-    rules.json に {"issued", "rules": [{"id", "text"}], "proposals": [{"id", "rule", "source"} か {"id", "rule_id", "reason", "source"}]}、
+    rules.json に {"issued", "rules": [{"id", "text"}], "proposals": [判断ストアの IF の proposals() と同じ形]}、
     usage.jsonl に apply / reject / escalate / decide / propose / retire の記録を追記する。
     """
 
@@ -271,22 +271,22 @@ class RuleFile:
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None:
         self._log("decided", decision=decision, outcome=outcome, actual=actual, predicted=predicted)
 
-    def _add_proposal(self, key: str, value: str, **fields: str) -> str:
+    def _add_proposal(self, kind: str, key: str, value: str, **fields: str) -> str:
         data = self._load()
         for p in data["proposals"]:
-            if p.get(key) == value:
+            if p["kind"] == kind and p[key] == value:
                 return p["id"]  # 冪等：同じ提案は二重に出さない
         proposal_id = f"P{len(data['proposals']) + 1:03d}"
-        data["proposals"].append({"id": proposal_id, key: value, **fields})
+        data["proposals"].append({"id": proposal_id, "kind": kind, key: value, **fields})
         _write_json(self.dir / "rules.json", data)
-        self._log("proposed", proposal=proposal_id, **{key: value}, **fields)
+        self._log("proposed", proposal=proposal_id, kind=kind, **{key: value}, **fields)
         return proposal_id
 
     def propose(self, rule: str, source: str) -> str:
-        return self._add_proposal("rule", rule, source=source)
+        return self._add_proposal("add", "rule", rule, decision=source)
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
-        return self._add_proposal("rule_id", rule_id, reason=reason, source=source)
+        return self._add_proposal("retire", "rule_id", rule_id, reason=reason, decision=source)
 
     def proposals(self) -> list[dict[str, str]]:
         return self._load()["proposals"]
@@ -298,7 +298,7 @@ class RuleFile:
         if proposal is None:
             raise KeyError(f"no such proposal: {proposal_id}")
         data["proposals"].remove(proposal)
-        if "rule_id" in proposal:
+        if proposal["kind"] == "retire":
             data["rules"] = [r for r in data["rules"] if r["id"] != proposal["rule_id"]]
             _write_json(self.dir / "rules.json", data)
             self._log("retired", rule_id=proposal["rule_id"])

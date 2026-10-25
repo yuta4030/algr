@@ -138,7 +138,8 @@ class DecisionStore(Protocol):
     def proposals(self) -> list[dict[str, str]]:
         """まだ受け入れも却下もされていない提案。
 
-        足す提案は {"id", "rule", "source"}、外す提案は {"id", "rule_id", "reason", "source"}。
+        足す提案は {"id", "kind": "add", "rule", "decision"}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
+        decision は propose / propose_retire の source に渡した決断 ID。
         """
         ...
 

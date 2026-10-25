@@ -7,3 +7,4 @@ build/
 *.egg-info/
 .algr/state/
 .algr/tasks/
+.algr/decisions/.k2down.lock

@@ -13,7 +13,7 @@
 
 ```json
 {
-  "fills": [{"question_id": "I12-1", "answer": "OAuth", "rule_ids": ["R001"]}],
+  "fills": [{"question_id": "I12-1", "answer": "OAuth", "rule_ids": ["R-h4n8c"]}],
   "questions": [{"text": "セッションをどこに持つか", "topic": "session", "options": ["redis", "cookie"], "recommended": "redis"}],
   "tasks": []
 }
