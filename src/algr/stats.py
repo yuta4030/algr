@@ -60,6 +60,11 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 waits.append((datetime.fromisoformat(e["ts"]) - asked_at).total_seconds())
                 asked_at = None
 
+    by_kind: dict[str, int] = {}
+    for j in jobs:
+        for kind, n in j.get("usage", {}).items():
+            by_kind[kind] = by_kind.get(kind, 0) + n
+
     return {
         "tasks": created,
         "done": len(done),
@@ -70,5 +75,6 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "stp_rate": _rate(len(touchless), len(done)),
         "interventions_per_task": _rate(interventions, created),
         "decision_wait_median_s": median(waits) if waits else None,
-        "tokens_per_task": _rate(sum(sum(j.get("usage", {}).values()) for j in jobs), created),
+        "tokens_per_task": _rate(sum(by_kind.values()), created),
+        "tokens_per_task_by_kind": {kind: _rate(n, created) for kind, n in by_kind.items()},
     }

@@ -396,7 +396,9 @@ def test_token_usage_and_agent_settings(engine, repo):
 
     from algr import stats
 
-    assert stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))["tokens_per_task"] == 330.0
+    summary = stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))
+    assert summary["tokens_per_task"] == 330.0
+    assert summary["tokens_per_task_by_kind"] == {"input_tokens": 300.0, "output_tokens": 30.0}
 
 
 def test_watch_keeps_dispatching_until_stopped(engine):

@@ -28,6 +28,8 @@ from typing import Any
 
 PROMPTS = Path(__file__).with_name("prompts")
 JSON_BLOCK = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
+# 結果の usage に持つ項目。Claude の API の usage と同じ名前と意味にそろえる
+USAGE_KINDS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
 
 class AgentError(Exception):
@@ -83,10 +85,8 @@ def run(job: dict[str, Any], root: Path) -> dict[str, Any]:
         raise AgentError(f"claude reported an error: {str(out.get('result', ''))[-500:]}")
     result = extract(str(out.get("result", "")))
     usage = out.get("usage") or {}
-    result["usage"] = {
-        "input_tokens": sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
-        "output_tokens": int(usage.get("output_tokens") or 0),
-    }
+    # Claude の API と同じ意味で持つ。input_tokens はキャッシュを除いた分で、キャッシュの読み込みと書き込みは別に数える
+    result["usage"] = {k: int(usage.get(k) or 0) for k in USAGE_KINDS}
     return result
 
 

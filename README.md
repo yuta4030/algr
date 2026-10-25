@@ -35,7 +35,7 @@ algr accept P001                                   # 提案をルールにする
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
 STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値、
-タスクあたりのトークン数を出します。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`）と終了（`job`）、hook の失敗（`hook_error`）も時刻付きで残ります。
+タスクあたりのトークン数（合計と、キャッシュの読み込み・書き込みを分けた項目ごと）を出します。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`）と終了（`job`）、hook の失敗（`hook_error`）も時刻付きで残ります。
 
 `algr watch` は常駐して tick を回し続けます（`--interval` 秒ごと）。トリガーの取り込みと ready の配車が止まらないようにするためのプロセスで、
 起きたイベントを 1 行ずつ出します。SIGINT（Ctrl-C）か SIGTERM で、いまの tick を終えてから止まります。
@@ -206,7 +206,9 @@ model = "haiku"
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。
-結果に `"usage": {"input_tokens", "output_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、`algr stats` の `tokens_per_task` に出します。
+結果に `"usage": {"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、
+`algr stats` の `tokens_per_task`（全項目の合計）と `tokens_per_task_by_kind`（項目ごと）に出します。項目の意味は Claude の API の usage と同じで、
+`input_tokens` はキャッシュを除いた分です。キャッシュの 2 項目は省いてかまいません。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。
 
 ### k2down
