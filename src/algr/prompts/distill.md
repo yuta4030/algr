@@ -12,5 +12,5 @@
 提案は人が受け入れてはじめてルールになる。外す提案も、人が受け入れるまでルールは外れない。迷ったら提案しない方を選ぶ。
 
 ```json
-{"rules": [{"rule": "外部公開 API の認証は OAuth に統一する", "source": "I12-1"}], "retire": [{"rule_id": "R004", "reason": "I12-1 の OAuth への統一とぶつかる", "source": "I12-1"}]}
+{"rules": [{"rule": "外部公開 API の認証は OAuth に統一する", "source": "I12-1"}], "retire": [{"rule_id": "R-k7m2q", "reason": "I12-1 の OAuth への統一とぶつかる", "source": "I12-1"}]}
 ```

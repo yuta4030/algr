@@ -44,7 +44,7 @@ algr reopen I2 --note "runner を直した"            # failed のタスクを�
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
 algr distill "日付は UTC で保存する" --topic time  # タスクの外で言った方針を、蒸留エージェントに依頼する
 algr proposals                                     # 蒸留エージェントのルール提案（足す提案と外す提案）
-algr accept P001                                   # 提案をルールにする。外す提案ならルールを外す（algr decline で却下）
+algr accept P-a2m4n                                # 提案をルールにする。外す提案ならルールを外す（algr decline で却下）
 ```
 
 `algr distill` は方針を `source: policy` のタスクに乗せ、蒸留のジョブだけを出します。タスクは最初から done で、起票・実装・レビューには流れず、

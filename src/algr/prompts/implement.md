@@ -9,7 +9,7 @@
 5. リポジトリのテストとリンタを通してから PR を出す。PR の説明には判断の一覧と、従ったルールの ID を書く
 
 ```json
-{"pr": "https://github.com/owner/repo/pull/12", "decisions": [{"text": "日付の扱い", "answer": "UTC で保存する", "topic": "time", "rule_ids": ["R004"]}, {"text": "設定の置き場所", "answer": "TOML に置く", "topic": "config", "question_ids": ["I12-1"]}], "tasks": []}
+{"pr": "https://github.com/owner/repo/pull/12", "decisions": [{"text": "日付の扱い", "answer": "UTC で保存する", "topic": "time", "rule_ids": ["R-k7m2q"]}, {"text": "設定の置き場所", "answer": "TOML に置く", "topic": "config", "question_ids": ["I12-1"]}], "tasks": []}
 ```
 
 差し戻すとき：
