@@ -14,7 +14,7 @@ algr（/ˈælɡər/、アルガー）は、Algorithmic Development という働�
 
 | 立場 | やること | 答える判断 | 操作 |
 |---|---|---|---|
-| クライアント | 何をやるか、目的、こだわり度を伝える | 「何を大事にするか」が問われるもの | `algr new`、`algr answer` |
+| クライアント | 何をやるか、目的、こだわり度を伝える | 「何を大事にするか」が問われるもの | `algr new`、`algr answer`、`algr depends` |
 | メタプログラマー | 何を自動で通してよいかを決める。ルールを見直し、他チームとの境界（公開する IF や API の契約）を守る | 「どこまで任せてよいか」が問われるもの | `algr accept` / `decline`、`algr merge`、`algr reopen` |
 
 ルールで決まらない判断は、文脈を一番持っている起票の瞬間に寄せます。人が答えた判断は蒸留エージェントがルールにし、
@@ -39,6 +39,7 @@ algr list --state needs-decision
 algr answer I1 I1-1="OAuth"                        # 答えると起票に戻る
 algr run                                           # 起票 → 実装 → レビュー → マージ
 algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
+algr depends I2 --add I3 --remove I1              # 依存先をあとから足す・外す
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
 algr proposals                                     # 蒸留エージェントのルール提案
@@ -122,6 +123,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 - **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか（`rule_ids`）、未決事項の答えに従ったか（`question_ids`。根拠は未決事項の by を受け継ぐ）、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
 
 タスクは `depends` に依存先のタスク ID を持てます。依存先がすべて done になるまで、ready のまま配車しません。
+依存先は起票のとき（`algr new --depends`）に付け、あとから `algr depends` で足す・外せます。依存先は実在するタスクに限り、循環する依存は付けられません。
 依存先が failed になったら、待っているタスクは待ち続け、失敗の通知に待っているタスクの ID を添えます（直すのは失敗した方なので）。
 
 タスクの保存は楽観ロックです。`TaskAdapter.save` は読んだときの版（`version`）と保存済みの版が違えば `Conflict` を投げ、
