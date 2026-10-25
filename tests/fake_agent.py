@@ -6,6 +6,7 @@
 - "needs-db" を含み、db の判断がまだ無い：起票に差し戻す
 - "guess" を含み、naming の判断がまだ無い：ルール無しで判断して PR を出す
 - "cite" を含む：R001 に従った判断を載せて PR を出す
+- "follow" を含む：答えのある未決事項すべてに従った判断を載せて PR を出す。"follow-bad" は無い未決事項に従わせる
 - "slow" を含む：結果を出す前に、ファイル stop ができるまで待つ
 - "flaky" を含む：ファイル flaky-ok ができるまで終了コード 1
 - "fixme" を含む：修正依頼（feedback）を受けてから出した PR は "-fixed" で終わる
@@ -64,6 +65,9 @@ elif "needs-db" in title and "db" not in decided:
     write({"returned": {"text": "Which database?", "topic": "db", "recommended": "sqlite"}})
 elif "guess" in title and "naming" not in decided:
     write({"pr": f"pr/{task['id']}", "decisions": [{"text": "Module name", "topic": "naming", "answer": "util"}]})
+elif "follow" in title:
+    qids = ["I99-1"] if "follow-bad" in title else [q["id"] for q in task["questions"] if q["answer"] is not None]
+    write({"pr": f"pr/{task['id']}", "decisions": [{"text": "Follow", "answer": "as answered", "question_ids": qids}]})
 elif "cite" in title:
     write({"pr": f"pr/{task['id']}", "decisions": [{"text": "Auth", "topic": "auth", "answer": "OAuth", "rule_ids": ["R001"]}]})
 elif "slow" in title:

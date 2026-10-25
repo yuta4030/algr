@@ -4,11 +4,11 @@ import urllib.error
 import urllib.request
 
 import pytest
+from conftest import run_until
 
 from algr import ui
 from algr.config import Config
 from algr.engine import Engine
-from conftest import run_until
 
 
 @pytest.fixture

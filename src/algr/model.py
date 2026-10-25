@@ -63,11 +63,7 @@ class Decision:
     answer: str
     topic: str = ""
     rule_ids: list[str] = field(default_factory=list)
-
-    @property
-    def by(self) -> str:
-        """ルールに従ったか、根拠なくエージェントが決めたか。"""
-        return "rule" if self.rule_ids else "agent"
+    question_ids: list[str] = field(default_factory=list)  # 従った未決事項。ルールの ID とは混ぜない
 
 
 @dataclass
@@ -110,6 +106,19 @@ class Task:
                 return d
         raise KeyError(f"{self.id} has no decision {did}")
 
+    def decided_by(self, d: Decision) -> str:
+        """判断の根拠：ルールに従ったか、未決事項の答えに従ったか、根拠なくエージェントが決めたか。
+
+        未決事項に従った判断は、その未決事項の by を受け継ぐ（人の答えなら human、ルールで埋まったものなら rule）。
+        ルールの ID は未決事項の側にだけ残り、判断には写さない。
+        """
+        if d.rule_ids:
+            return "rule"
+        followed = [q.by for q in self.questions if q.id in d.question_ids]
+        if not followed:
+            return "agent"
+        return "human" if "human" in followed else "rule"
+
     def next_id(self) -> str:
         """決断 ID はタスク単位で振る（例：I123-1）。k2down の記録とタスクがつながる。"""
         self.seq += 1
@@ -124,8 +133,22 @@ class Task:
         self.questions.append(q)
         return q
 
-    def add_decision(self, text: str, answer: str, topic: str = "", rule_ids: list[str] | None = None) -> Decision:
-        d = Decision(id=self.next_id(), text=text, answer=answer, topic=topic, rule_ids=list(rule_ids or []))
+    def add_decision(
+        self,
+        text: str,
+        answer: str,
+        topic: str = "",
+        rule_ids: list[str] | None = None,
+        question_ids: list[str] | None = None,
+    ) -> Decision:
+        d = Decision(
+            id=self.next_id(),
+            text=text,
+            answer=answer,
+            topic=topic,
+            rule_ids=list(rule_ids or []),
+            question_ids=list(question_ids or []),
+        )
         self.decisions.append(d)
         return d
 

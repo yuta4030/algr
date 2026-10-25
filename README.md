@@ -107,7 +107,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 タスクは 2 種類の判断を別々に持ちます。どちらも決断 ID（`I1-1`）をタスク内で通し番号で振ります。
 
 - **未決事項**（`questions`）：起票で埋めるもの。ルールで埋まるか、人が答える
-- **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
+- **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか（`rule_ids`）、未決事項の答えに従ったか（`question_ids`。根拠は未決事項の by を受け継ぐ）、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
 
 タスクは `depends` に依存先のタスク ID を持てます。依存先がすべて done になるまで、ready のまま配車しません。
 依存先が failed になったら、待っているタスクは待ち続け、失敗の通知に待っているタスクの ID を添えます（直すのは失敗した方なので）。
@@ -124,7 +124,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | 役 | 起動する時 | 結果（JSON） |
 |---|---|---|
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
-| `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
+| `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
 | `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
 | `distill` | 人が答えた未決事項がある時 | `{"rules": [{"rule", "source"}]}` |
 

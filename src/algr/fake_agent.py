@@ -3,7 +3,7 @@
 python -m algr.fake_agent で起動され、ALGR_ROLE の役を演じる。AI は使わず、次の決まりで判断する。
 - 起票：「<topic>: <answer>」の形のルールを、同じ topic の未決事項に当てる
 - 実装：判断なしで PR を出す
-- レビュー：PR があり、判断がすべて実在するルールか人の答えに基づいていれば通す
+- レビュー：PR があり、判断がすべて実在するルールか未決事項の答えに基づいていれば通す
 - 蒸留：topic のある人の答えを「<topic>: <answer>」のルールにする
 """
 
@@ -36,12 +36,15 @@ def implement(task: dict[str, Any], rules: list[dict[str, str]]) -> dict[str, An
 
 def review(task: dict[str, Any], rules: list[dict[str, str]]) -> dict[str, Any]:
     known = {r["id"] for r in rules}
+    answered = {q["id"] for q in task["questions"] if q["answer"] is not None}
     objections = {}
     for d in task["decisions"]:
-        if not d["rule_ids"]:
+        if not d["rule_ids"] and not d["question_ids"]:
             objections[d["id"]] = "decided without a rule"
         elif not set(d["rule_ids"]) <= known:
             objections[d["id"]] = "cites unknown rules"
+        elif not set(d["question_ids"]) <= answered:
+            objections[d["id"]] = "follows unanswered questions"
     for q in task["questions"]:
         if q["by"] == "rule" and not set(q["rule_ids"]) <= known:
             objections[q["id"]] = "cites unknown rules"

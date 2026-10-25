@@ -7,9 +7,11 @@ GUI は判断も状態も持たない。読むのはアダプタの IF とエン
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from itertools import pairwise
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -92,6 +94,7 @@ def snapshot(engine: Engine) -> dict[str, Any]:
         "tasks": [
             {
                 **t.to_dict(),
+                "decisions": [{**asdict(d), "by": t.decided_by(d)} for d in t.decisions],
                 "progress": _progress(t, by_task.get(t.id, []), states),
                 "actions": _actions(t),
                 "events": by_task.get(t.id, []),
@@ -162,7 +165,7 @@ def flow_counts(records: list[dict[str, Any]], tasks: list[Task]) -> dict[str, A
     ]
     stays: dict[str, list[float]] = {}
     for rs in _by_task(events).values():
-        for e, nxt in zip(rs, rs[1:]):
+        for e, nxt in pairwise(rs):
             state = str(flow.TRANSITIONS[e["name"]][1])
             stays.setdefault(state, []).append((_ts(nxt["ts"]) - _ts(e["ts"])).total_seconds())
     states = [
@@ -193,7 +196,7 @@ def rule_usage(tasks: list[Task], rules: list[dict[str, str]], proposals: list[d
         for d in t.decisions:
             for rid in d.rule_ids:
                 used.setdefault(rid, []).append({"task_id": t.id, "id": d.id})
-            if not d.rule_ids:
+            if t.decided_by(d) == "agent":
                 topic = topics.setdefault(d.topic, {"topic": d.topic, "human": 0, "agent": 0, "examples": []})
                 topic["agent"] += 1
                 topic["examples"].append({"id": d.id, "text": d.text, "answer": d.answer, "by": "agent"})
