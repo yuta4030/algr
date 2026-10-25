@@ -72,7 +72,7 @@ class Task:
     title: str
     state: State = State.INTAKE
     purpose: str = ""
-    source: str = "human"  # "human" | "auto"
+    source: str = "human"  # "human" | "auto" | "policy"（人の方針を蒸留に依頼するタスク。done で作り、蒸留のジョブだけが出る）
     priority: int = 0  # 大きいほど先に配車する
     depends: list[str] = field(default_factory=list)  # 先に done になっている必要があるタスクの ID
     questions: list[Question] = field(default_factory=list)

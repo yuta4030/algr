@@ -87,6 +87,36 @@ def test_depends(algr):
     assert task["depends"] == []
 
 
+def test_distill_a_policy_and_retire_the_rule_it_replaces(algr, repo, capsys):
+    code, task, _ = algr("distill", "sqlite", "--topic", "db")
+    assert code == 0
+    assert (task["source"], task["state"], list(task["jobs"])) == ("policy", "done", ["distill"])
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    _, data, _ = algr("proposals")
+    assert data["proposals"] == [{"id": "P001", "rule": "db: sqlite", "source": "I1-1"}]
+    algr("accept", "P001")
+
+    # 同じ方針はもうルールにあるので、提案は出ない
+    algr("distill", "sqlite", "--topic", "db")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    assert algr("proposals")[1]["proposals"] == []
+
+    # ぶつかる方針は、新しいルールと古いルールを外す提案になる。外れるのは accept したときだけ
+    algr("distill", "postgres", "--topic", "db")
+    algr("run", "--interval", "0.02", "--timeout", "10")
+    main(["-C", str(repo), "proposals"])
+    assert capsys.readouterr().out == "P001 db: postgres (from I3-1)\nP002 retire R001: db: postgres とぶつかる (from I3-1)\n"
+    assert [r["id"] for r in algr("rules")[1]["rules"]] == ["R001"]
+    algr("accept", "P002")
+    algr("accept", "P001")
+    assert algr("rules")[1]["rules"] == [{"id": "R002", "text": "db: postgres"}]
+
+    # 方針のタスクはフローに流れず、イベントも出さない
+    _, data, _ = algr("stats")
+    assert data["stats"]["tasks"] == 0
+    assert [t["state"] for t in algr("list")[1]] == ["done", "done", "done"]
+
+
 def test_stats(algr):
     algr("new", "plain")
     algr("new", "asks", "-q", "auth: How?")

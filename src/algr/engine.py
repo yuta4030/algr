@@ -32,6 +32,9 @@ EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.d
 # エージェントが起票する別件の未決事項から受け取る項目
 QUESTION_FIELDS = ("text", "topic", "options", "recommended")
 
+# 人の方針を蒸留に依頼するタスクで、方針（答え）を載せる未決事項の問い
+POLICY_QUESTION = "人の方針（タスクの外で受けたもの）"
+
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
 
 
@@ -182,6 +185,21 @@ class Engine:
             task.to_distill.append(q.id)
         self.emit("decision.resolved", task, questions=list(answers))
         return self.tasks.get(task_id)
+
+    def request_distill(self, policy: str, *, topic: str = "") -> Task:
+        """人がタスクの外で言った方針を、蒸留エージェントに依頼する。
+
+        依頼はタスクに乗せる（アダプタ IF を変えずにジョブを持てる）。方針は人が答えた未決事項として持ち、
+        蒸留のジョブだけが出るよう、最初から done にしておく。起票・実装・レビューには流れず、イベントも出さない。
+        """
+        title = f"方針：{' '.join(policy.split())[:40]}"
+        task = self.tasks.create(Task(id="", title=title, purpose=policy, source="policy", state=State.DONE))
+        q = task.add_question(POLICY_QUESTION, topic, answer=policy, by="human")
+        self.decisions.decide(q.id, "none", policy)
+        task.to_distill.append(q.id)
+        self.tasks.save(task)
+        self._start_jobs(task)
+        return self.tasks.get(task.id)
 
     def reopen(self, task_id: str, note: str = "") -> Task:
         """人が failed のタスクを起票に戻す。修正依頼の回数は数え直す。"""
@@ -362,6 +380,7 @@ class Engine:
             try:
                 result = parse(Role(role), status.result)
                 self._check_depends(getattr(result, "tasks", []))
+                self._check_retire(getattr(result, "retire", []))
             except ResultError as e:
                 result, status.message = None, f"bad result from {role}: {e}"
         if result is None:
@@ -386,6 +405,10 @@ class Engine:
             if unknown := sorted(set(new.get("depends", [])) - known):
                 raise ResultError(f"tasks depend on unknown tasks: {' '.join(unknown)}")
 
+    def _check_retire(self, retire: list[dict[str, str]]) -> None:
+        if retire and (unknown := sorted({r["rule_id"] for r in retire} - {r.id for r in self.decisions.rules()})):
+            raise ResultError(f"retire unknown rules: {' '.join(unknown)}")
+
     def _job_failed(self, task: Task, role: Role, message: str) -> None:
         if role == Role.DISTILL:
             self.tasks.save(task)
@@ -408,6 +431,8 @@ class Engine:
         elif isinstance(result, DistillResult):
             for r in result.rules:
                 self.decisions.propose(r["rule"], source=r["source"])
+            for r in result.retire:
+                self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"])
             self.tasks.save(task)
 
     def _ask(self, task: Task, questions: list[Question]) -> list[str]:

@@ -31,6 +31,7 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr depends I2 --add I1 --remove I3              # change the tasks I2 waits for
   algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
   algr merge I1                                     # merge an approved task (flow.merge = "human")
+  algr distill "Store dates in UTC" --topic time    # ask the distill agent to propose rules from a policy
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
   algr watch                                        # keep ticking until Ctrl-C (the resident process)
@@ -93,6 +94,12 @@ def _task_text(task: Task) -> str:
     return "\n".join(lines)
 
 
+def _proposal_text(p: dict[str, str]) -> str:
+    if "rule_id" in p:
+        return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {p['source']})"
+    return f"{p['id']} {p['rule']} (from {p['source']})"
+
+
 def _question(value: str) -> dict[str, str]:
     topic, sep, text = value.partition(": ")
     return {"topic": topic, "text": text} if sep else {"text": value}
@@ -152,6 +159,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("watch", help="keep ticking: take in triggers, dispatch ready tasks, run jobs (Ctrl-C to stop)")
     p.add_argument("--interval", type=float, default=5.0, help="seconds between ticks")
     sub.add_parser("rules", help="list the rules from the decision store")
+    p = sub.add_parser("distill", help="ask the distill agent to turn a policy into rule proposals")
+    p.add_argument("policy")
+    p.add_argument("--topic", default="")
     sub.add_parser("proposals", help="list rule proposals from the distill agent")
     p = sub.add_parser("accept", help="accept a rule proposal")
     p.add_argument("proposal_id")
@@ -223,6 +233,8 @@ def run(args: argparse.Namespace) -> Any:
         finally:
             httpd.server_close()
         return None
+    if args.command == "distill":
+        return engine.request_distill(args.policy, topic=args.topic)
     if args.command == "proposals":
         return {"proposals": engine.decisions.proposals()}
     if args.command == "accept":
@@ -253,7 +265,7 @@ def _to_text(value: Any) -> str:
     if "stats" in value:
         return "\n".join(f"{k}: {'-' if v is None else v}" for k, v in value["stats"].items())
     if "proposals" in value:
-        return "\n".join(f"{p['id']} {p['rule']} (from {p['source']})" for p in value["proposals"])
+        return "\n".join(_proposal_text(p) for p in value["proposals"])
     if "rules" in value:
         return "\n".join(f"{r['id']} {r['text']}" for r in value["rules"])
     if "created" in value:

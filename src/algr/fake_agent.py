@@ -4,7 +4,7 @@ python -m algr.fake_agent で起動され、ALGR_ROLE の役を演じる。AI �
 - 起票：「<topic>: <answer>」の形のルールを、同じ topic の未決事項に当てる
 - 実装：判断なしで PR を出す
 - レビュー：PR があり、判断がすべて実在するルールか未決事項の答えに基づいていれば通す
-- 蒸留：topic のある人の答えを「<topic>: <answer>」のルールにする
+- 蒸留：topic のある人の答えを「<topic>: <answer>」のルールにする。同じルールがあれば出さず、同じ topic のルールは外す提案にする
 """
 
 from __future__ import annotations
@@ -51,13 +51,19 @@ def review(task: dict[str, Any], rules: list[dict[str, str]]) -> dict[str, Any]:
     return {"approved": bool(task["pr"]) and not objections, "objections": objections}
 
 
-def distill(questions: list[dict[str, Any]]) -> dict[str, Any]:
-    rules = [
-        {"rule": f"{q['topic']}{RULE_SEPARATOR}{q['answer']}", "source": q["id"]}
-        for q in questions
-        if q["topic"] and q["answer"] is not None
-    ]
-    return {"rules": rules}
+def distill(questions: list[dict[str, Any]], rules: list[dict[str, str]]) -> dict[str, Any]:
+    proposed, retire = [], []
+    for q in questions:
+        if not q["topic"] or q["answer"] is None:
+            continue
+        text = f"{q['topic']}{RULE_SEPARATOR}{q['answer']}"
+        if any(r["text"] == text for r in rules):
+            continue  # 同じルールがもうある
+        proposed.append({"rule": text, "source": q["id"]})
+        for r in rules:
+            if r["text"].partition(RULE_SEPARATOR)[0] == q["topic"]:
+                retire.append({"rule_id": r["id"], "reason": f"{text} とぶつかる", "source": q["id"]})
+    return {"rules": proposed, "retire": retire}
 
 
 def run(job: dict[str, Any]) -> dict[str, Any]:
@@ -70,7 +76,7 @@ def run(job: dict[str, Any]) -> dict[str, Any]:
     if role == "review":
         return review(task, rules)
     if role == "distill":
-        return distill(job["input"].get("questions", []))
+        return distill(job["input"].get("questions", []), rules)
     raise SystemExit(f"unknown role: {role}")
 
 

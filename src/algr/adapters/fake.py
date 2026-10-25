@@ -225,8 +225,8 @@ class LocalProcess:
 class RuleFile:
     """1 行ルールと判断の記録をファイルで持つ。k2down の代わりに使うフェイクの判断ストア。
 
-    rules.json に {"rules": [{"id", "text"}], "proposals": [{"id", "rule", "source"}]}、
-    usage.jsonl に apply / reject / escalate / decide / propose の記録を追記する。
+    rules.json に {"issued", "rules": [{"id", "text"}], "proposals": [{"id", "rule", "source"} か {"id", "rule_id", "reason", "source"}]}、
+    usage.jsonl に apply / reject / escalate / decide / propose / retire の記録を追記する。
     """
 
     def __init__(self, ctx: Context, dir: str = ".algr/decisions") -> None:
@@ -252,7 +252,9 @@ class RuleFile:
 
     def add(self, text: str) -> str:
         data = self._load()
-        rule_id = f"R{len(data['rules']) + 1:03d}"
+        # 振った数は k2down と同じく issued に持ち、外したルールの番号を使い回さない
+        data["issued"] = data.get("issued", len(data["rules"])) + 1
+        rule_id = f"R{data['issued']:03d}"
         data["rules"].append({"id": rule_id, "text": text})
         _write_json(self.dir / "rules.json", data)
         return rule_id
@@ -269,27 +271,38 @@ class RuleFile:
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None:
         self._log("decided", decision=decision, outcome=outcome, actual=actual, predicted=predicted)
 
-    def propose(self, rule: str, source: str) -> str:
+    def _add_proposal(self, key: str, value: str, **fields: str) -> str:
         data = self._load()
         for p in data["proposals"]:
-            if p["rule"] == rule:
+            if p.get(key) == value:
                 return p["id"]  # 冪等：同じ提案は二重に出さない
         proposal_id = f"P{len(data['proposals']) + 1:03d}"
-        data["proposals"].append({"id": proposal_id, "rule": rule, "source": source})
+        data["proposals"].append({"id": proposal_id, key: value, **fields})
         _write_json(self.dir / "rules.json", data)
-        self._log("proposed", proposal=proposal_id, rule=rule, source=source)
+        self._log("proposed", proposal=proposal_id, **{key: value}, **fields)
         return proposal_id
+
+    def propose(self, rule: str, source: str) -> str:
+        return self._add_proposal("rule", rule, source=source)
+
+    def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
+        return self._add_proposal("rule_id", rule_id, reason=reason, source=source)
 
     def proposals(self) -> list[dict[str, str]]:
         return self._load()["proposals"]
 
     def accept(self, proposal_id: str) -> str:
-        """提案を受け入れてルールにする。実運用ではルールの PR のマージにあたる。"""
+        """提案を受け入れてルールにする（外す提案ならルールを外す）。実運用ではルールの PR のマージにあたる。"""
         data = self._load()
         proposal = next((p for p in data["proposals"] if p["id"] == proposal_id), None)
         if proposal is None:
             raise KeyError(f"no such proposal: {proposal_id}")
         data["proposals"].remove(proposal)
+        if "rule_id" in proposal:
+            data["rules"] = [r for r in data["rules"] if r["id"] != proposal["rule_id"]]
+            _write_json(self.dir / "rules.json", data)
+            self._log("retired", rule_id=proposal["rule_id"])
+            return proposal["rule_id"]
         _write_json(self.dir / "rules.json", data)
         return self.add(proposal["rule"])
 

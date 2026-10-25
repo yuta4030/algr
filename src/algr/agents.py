@@ -11,7 +11,8 @@
              想定外の判断が出たら、勝手に決めずに {"returned": {"text", "topic"?, "recommended"?}}
 - review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
              objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
-- distill：  {"rules": [{"rule", "source"}]}
+- distill：  {"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}
+             rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く
 
 intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
 depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
@@ -62,6 +63,7 @@ class ReviewResult:
 @dataclass
 class DistillResult:
     rules: list[dict[str, str]] = field(default_factory=list)
+    retire: list[dict[str, str]] = field(default_factory=list)  # 外す提案。外すのは人の accept を通したときだけ
 
 
 def job_input(role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -138,5 +140,7 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
             raise ResultError("changes must be a list of strings")
         return ReviewResult(bool(_need(data, "approved", bool)), {str(k): str(v) for k, v in objections.items()}, changes)
     if role == Role.DISTILL:
-        return DistillResult(_texts(data.get("rules", []), "rule", "source"))
+        return DistillResult(
+            _texts(data.get("rules", []), "rule", "source"), _texts(data.get("retire", []), "rule_id", "reason", "source")
+        )
     raise ResultError(f"unknown role: {role}")

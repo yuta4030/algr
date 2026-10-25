@@ -3,7 +3,7 @@
 k2down は https://github.com/yuta4030/k2down 。`uv tool install git+https://github.com/yuta4030/k2down` で入る。
 k2down 自身は判定せず記録と集計だけを行うので、algr のコアと同じく判断はエージェントに任せられる。
 
-ルールの追加は提案として .algr/state/proposals.json に積み、人が accept したときに `k2down add` で rules.json に書く。
+ルールの追加と外しは提案として .algr/state/proposals.json に積み、人が accept したときに `k2down add` か `k2down retire` で rules.json に書く。
 rules.json の差分は PR で見えるので、そのマージをもって人の確認とする。
 """
 
@@ -85,16 +85,22 @@ class K2down:
         tmp.write_text(json.dumps(proposals, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         tmp.replace(self.proposals_file)
 
-    def propose(self, rule: str, source: str) -> str:
+    def _add_proposal(self, key: str, value: str, **fields: str) -> str:
         proposals = self._load()
         for p in proposals:
-            if p["rule"] == rule:
+            if p.get(key) == value:
                 return p["id"]  # 冪等：同じ提案は二重に出さない
         numbers = [int(p["id"][1:]) for p in proposals]
         proposal_id = f"P{max(numbers, default=0) + 1:03d}"
-        proposals.append({"id": proposal_id, "rule": _one_line(rule), "source": source})
+        proposals.append({"id": proposal_id, key: value, **fields})
         self._save(proposals)
         return proposal_id
+
+    def propose(self, rule: str, source: str) -> str:
+        return self._add_proposal("rule", _one_line(rule), source=source)
+
+    def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
+        return self._add_proposal("rule_id", rule_id, reason=_one_line(reason), source=source)
 
     def proposals(self) -> list[dict[str, str]]:
         return self._load()
@@ -105,7 +111,11 @@ class K2down:
         if proposal is None:
             raise KeyError(f"no such proposal: {proposal_id}")
         self.dir.mkdir(parents=True, exist_ok=True)
-        rule_id = self._run("add", proposal["rule"], "--source", proposal["source"])
+        if "rule_id" in proposal:
+            self._run("retire", proposal["rule_id"])
+            rule_id = proposal["rule_id"]
+        else:
+            rule_id = self._run("add", proposal["rule"], "--source", proposal["source"])
         self._save([p for p in proposals if p["id"] != proposal_id])
         return rule_id
 

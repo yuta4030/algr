@@ -48,6 +48,18 @@ def test_proposals_become_rules_when_accepted(store):
     assert [(r.id, r.text) for r in store.rules()] == [("R001", "db: sqlite")]  # 内部ノードは除く
 
 
+def test_retire_proposal_retires_the_rule_when_accepted(store):
+    store.propose("db: sqlite", "I1-3")
+    store.accept("P001")
+    assert store.propose_retire("R001", "db: postgres\nとぶつかる", "I2-1") == "P001"
+    assert store.propose_retire("R001", "again", "I3-1") == "P001"  # 冪等
+    assert store.proposals() == [{"id": "P001", "rule_id": "R001", "reason": "db: postgres とぶつかる", "source": "I2-1"}]
+    assert store.rules() != []  # accept までは外れない
+    assert store.accept("P001") == "R001"
+    assert calls(store)[-1] == ["retire", "R001"]
+    assert store.rules() == [] and store.proposals() == []
+
+
 def test_cli_errors_surface(store):
     with pytest.raises(K2downError, match="unknown rule: R404"):
         store.apply("I1-1", "p", ["R404"])
