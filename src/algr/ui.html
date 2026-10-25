@@ -222,7 +222,7 @@ main.page { display: block; }
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 // 足す提案はルールの文、外す提案は外すルールと理由
-const proposalText = (p) => p.rule_id ? `${p.rule_id} を外す：${p.reason}` : p.rule;
+const proposalText = (p) => p.kind === "retire" ? `${p.rule_id} を外す：${p.reason}` : p.rule;
 const ROLE = { intake: "起票", implement: "実装", review: "レビュー", distill: "蒸留" };
 const ACTION = { answer: "回答する", reopen: "やり直す", merge: "マージする" };
 let data = null, openId = null;
@@ -473,7 +473,7 @@ function renderRules() {
     <span class="use" data-tip="${esc(x.uses.map((u) => u.id).join(" ") || "未使用")}">${x.uses.length ? `<i class="bar" style="width:${(x.uses.length / max) * 80}px"></i>${x.uses.length}` : "未使用"}</span></div>`).join("") || `<div class="empty">–</div>`;
   $("r-pn").textContent = r.proposals.length;
   $("r-props").innerHTML = r.proposals.map((p) => `<div class="prop"><b>${esc(proposalText(p))}</b>
-    <div class="src">${p.question ? `${esc(p.source)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.source)}</div>
+    <div class="src">${p.question ? `${esc(p.decision)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.decision)}</div>
     <button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button> <button class="btn" disabled title="CLI: algr decline ${p.id}">却下</button></div>`).join("") || `<div class="clear"><span class="mark">✓</span>なし</div>`;
   const cmax = Math.max(1, ...r.candidates.map((c) => c.human + c.agent));
   $("r-cands").innerHTML = `<div class="legend"><span><i style="background:var(--human)"></i>人が答えた</span><span><i style="background:var(--bad)"></i>根拠なし</span></div>` +

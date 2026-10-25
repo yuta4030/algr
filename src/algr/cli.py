@@ -95,9 +95,9 @@ def _task_text(task: Task) -> str:
 
 
 def _proposal_text(p: dict[str, str]) -> str:
-    if "rule_id" in p:
-        return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {p['source']})"
-    return f"{p['id']} {p['rule']} (from {p['source']})"
+    if p["kind"] == "retire":
+        return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {p['decision']})"
+    return f"{p['id']} {p['rule']} (from {p['decision']})"
 
 
 def _question(value: str) -> dict[str, str]:

@@ -30,7 +30,7 @@ def test_loop_goes_around_once(engine):
     # 人が答えると起票に戻り、ready になる。蒸留エージェントが判断をルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
-    assert engine.decisions.proposals() == [{"id": "P001", "rule": "auth: OAuth", "source": "I1-1"}]
+    assert engine.decisions.proposals() == [{"id": "P001", "kind": "add", "rule": "auth: OAuth", "decision": "I1-1"}]
 
     # 実行：配車され、実装、レビューを経てマージまで進む
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
@@ -60,6 +60,7 @@ def test_loop_goes_around_once(engine):
     assert usage == [
         ("escalated", "I1-1"),
         ("decided", "I1-1"),
+        ("proposed", "I1-1"),
         ("applied", "I2-1"),
         ("decided", "I2-1"),
     ]

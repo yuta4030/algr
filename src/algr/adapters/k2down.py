@@ -3,7 +3,7 @@
 k2down は https://github.com/yuta4030/k2down 。`uv tool install git+https://github.com/yuta4030/k2down` で入る。
 k2down 自身は判定せず記録と集計だけを行うので、algr のコアと同じく判断はエージェントに任せられる。
 
-ルールの追加と外しは提案として .algr/state/proposals.json に積み、人が accept したときに `k2down add` か `k2down retire` で rules.json に書く。
+ルールの追加と外しは `k2down propose` で提案として積み、人が accept したときに k2down が rules.json に書く。
 rules.json の差分は PR で見えるので、そのマージをもって人の確認とする。
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Any
 
 from algr.adapters import AdapterError, Context, Rule
 
@@ -31,11 +30,9 @@ class K2down:
         ctx: Context,
         dir: str = ".algr/decisions",
         command: list[str] | None = None,
-        proposals: str = ".algr/state/proposals.json",
     ) -> None:
         self.dir = ctx.path(dir)
         self.command = list(command) if command else ["k2down"]
-        self.proposals_file = ctx.path(proposals)
 
     def _run(self, *args: str) -> str:
         argv = [*self.command, "--dir", str(self.dir), *args]
@@ -72,55 +69,28 @@ class K2down:
             args += ["--predicted", _one_line(predicted)]
         self._run(*args)
 
-    # --- 提案（k2down の外で持つ） -----------------------------------------
-
-    def _load(self) -> list[dict[str, str]]:
-        if not self.proposals_file.exists():
-            return []
-        return json.loads(self.proposals_file.read_text(encoding="utf-8"))
-
-    def _save(self, proposals: list[dict[str, Any]]) -> None:
-        self.proposals_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.proposals_file.with_name(self.proposals_file.name + ".tmp")
-        tmp.write_text(json.dumps(proposals, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(self.proposals_file)
-
-    def _add_proposal(self, key: str, value: str, **fields: str) -> str:
-        proposals = self._load()
-        for p in proposals:
-            if p.get(key) == value:
-                return p["id"]  # 冪等：同じ提案は二重に出さない
-        numbers = [int(p["id"][1:]) for p in proposals]
-        proposal_id = f"P{max(numbers, default=0) + 1:03d}"
-        proposals.append({"id": proposal_id, key: value, **fields})
-        self._save(proposals)
-        return proposal_id
+    # --- 提案（k2down の propose / proposals / accept / decline） ---------------
 
     def propose(self, rule: str, source: str) -> str:
-        return self._add_proposal("rule", _one_line(rule), source=source)
+        return json.loads(self._run("propose", "add", _one_line(rule), "--decision", source, "--json"))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
-        return self._add_proposal("rule_id", rule_id, reason=_one_line(reason), source=source)
+        # k2down の外す提案には理由の項目が無いので、ID で表せない出どころ（--source）に理由を入れる
+        args = ["propose", "retire", rule_id, "--decision", source, "--source", _one_line(reason), "--json"]
+        return json.loads(self._run(*args))["id"]
 
     def proposals(self) -> list[dict[str, str]]:
-        return self._load()
+        if not (self.dir / "proposals.json").exists():
+            return []
+        out = []
+        for p in json.loads(self._run("proposals", "--json"))["proposals"]:
+            if p["kind"] == "retire":
+                p["reason"] = p.pop("source", "")
+            out.append(p)
+        return out
 
     def accept(self, proposal_id: str) -> str:
-        proposals = self._load()
-        proposal = next((p for p in proposals if p["id"] == proposal_id), None)
-        if proposal is None:
-            raise KeyError(f"no such proposal: {proposal_id}")
-        self.dir.mkdir(parents=True, exist_ok=True)
-        if "rule_id" in proposal:
-            self._run("retire", proposal["rule_id"])
-            rule_id = proposal["rule_id"]
-        else:
-            rule_id = self._run("add", proposal["rule"], "--source", proposal["source"])
-        self._save([p for p in proposals if p["id"] != proposal_id])
-        return rule_id
+        return json.loads(self._run("accept", proposal_id, "--json"))["accepted"][0]["rule_id"]
 
     def reject_proposal(self, proposal_id: str) -> None:
-        proposals = self._load()
-        if not any(p["id"] == proposal_id for p in proposals):
-            raise KeyError(f"no such proposal: {proposal_id}")
-        self._save([p for p in proposals if p["id"] != proposal_id])
+        self._run("decline", proposal_id)

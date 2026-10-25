@@ -235,16 +235,18 @@ model = "haiku"
 
 ### k2down
 
-判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。
+判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。
 
 ```toml
 [adapters.decisions]
 use = "k2down"
-dir = ".algr/decisions"                 # rules.json と usage.jsonl を置くところ（k2down の --dir）
+dir = ".algr/decisions"                 # rules.json・proposals.json・usage.jsonl を置くところ（k2down の --dir）
 command = ["k2down"]                    # 省略時。uvx で動かすなら ["uvx", "--from", "git+https://github.com/yuta4030/k2down", "k2down"]
 ```
 
-蒸留エージェントの提案は `.algr/state/proposals.json` に積み、`algr accept` したときに `k2down add`（外す提案なら `k2down retire`）で rules.json に書きます。
+蒸留エージェントの提案は `k2down propose` で k2down の proposals.json に積み、`algr accept` で `k2down accept`、`algr decline` で `k2down decline` を呼びます。
+受け入れも却下も k2down の usage.jsonl に残ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
+store を git で管理するなら、k2down のロック（`.k2down.lock`）を `.gitignore` に入れてください。
 rules.json の差分を PR にしてマージすることを、人の確認とします。
 
 ## 開発
