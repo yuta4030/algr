@@ -56,7 +56,8 @@ def test_loop_with_claude(claude_engine, tmp_path):
     engine.create("Add login")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
-    assert task.usage == {"input_tokens": 300, "output_tokens": 15}  # キャッシュの読み込みも入力に数える
+    # キャッシュの読み込みは入力に足さず、別の項目に数える
+    assert task.usage == {"input_tokens": 30, "output_tokens": 15, "cache_read_input_tokens": 270, "cache_creation_input_tokens": 0}
 
     log = tmp_path / "claude"
     prompt = (log / "I1.review.3.prompt.md").read_text(encoding="utf-8")

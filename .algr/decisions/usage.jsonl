@@ -103,3 +103,45 @@
 {"ts": "2026-10-25T20:31:31+09:00", "event": "decided", "decision": "I6-1", "actual": "推奨どおり。このタスクは内訳の記録までにして、対策は測ってから別のタスクで起票する。理由：何が往復を増やしているかを測ってから効く対策を選ぶ（R012）", "outcome": "none"}
 {"ts": "2026-10-25T20:31:31+09:00", "event": "decided", "decision": "I6-2", "actual": "キャッシュの内訳は I5 で扱う（I5-1 で、input_tokens をキャッシュなしの分にし、キャッシュの 2 項目を別に持つと決めた）。I6 ではキャッシュの内訳に手を付けず、往復の回数だけを扱う。I5 と同じファイルに触るので、I5 が done になってから実装する。理由：同じ変更を 2 つのタスクでやるとぶつかる。1 つの事実は 1 か所で扱う（R011）", "outcome": "none"}
 {"ts": "2026-10-25T20:31:31+09:00", "event": "decided", "decision": "I6-3", "actual": "推奨どおり。RunStatus とジョブ終了の記録に turns を別の項目として足し、README の表も直す。既定値を持たせ、今のアダプタが返さなくても壊れないようにする。理由：usage はトークン数の辞書なので、種類の違う数を混ぜない（R009）", "outcome": "none"}
+{"ts": "2026-10-25T20:32:55+09:00", "event": "escalated", "decision": "I7-1", "problem": "Proposals currently leave nothing behind once they are handled. `accept` and `reject_proposal` in `src/algr/adapters/k2down.py` delete the entry from `.algr/state/proposals.json`, and the engine emit…", "reason": "no_match"}
+{"ts": "2026-10-25T20:32:55+09:00", "event": "escalated", "decision": "I7-2", "problem": "Where does this task stop? Following the purpose, the plan is to stop after measuring overlap between proposals, how spread out the topics are, and how much review work they create. Is it right that …", "reason": "no_match"}
+{"ts": "2026-10-25T20:35:52+09:00", "event": "applied", "rule_id": "R007", "problem": "usage の項目名の置き場所", "decision": "I5-5"}
+{"ts": "2026-10-25T20:35:52+09:00", "event": "applied", "rule_id": "R007", "problem": "ui.py・ui.html の扱い", "decision": "I5-6"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R016", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-9"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R007", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-9"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R002", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-9"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R007", "problem": "方針の人の決定の記録", "decision": "I3-11"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R011", "problem": "方針の人の決定の記録", "decision": "I3-11"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R009", "problem": "外す提案の記録の形", "decision": "I3-13"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R007", "problem": "知らないルールを外す提案の扱い", "decision": "I3-15"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R007", "problem": "fake の RuleFile のルール ID の振り方", "decision": "I3-16"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R008", "problem": "fake の RuleFile のルール ID の振り方", "decision": "I3-16"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R015", "problem": "蒸留のプロンプトでの衝突の扱い", "decision": "I3-17"}
+{"ts": "2026-10-25T20:43:25+09:00", "event": "applied", "rule_id": "R007", "problem": "蒸留のプロンプトでの衝突の扱い", "decision": "I3-17"}
+{"ts": "2026-10-25T20:43:26+09:00", "event": "applied", "rule_id": "R006", "problem": "UI の提案の表示", "decision": "I3-19"}
+{"ts": "2026-10-25T20:45:27+09:00", "event": "escalated", "decision": "I3-21", "problem": "人の方針の入口", "reason": "no_match"}
+{"ts": "2026-10-25T20:46:28+09:00", "event": "escalated", "decision": "I6-4", "problem": "I6-2 の答えで「I5 が done になってから実装する」と決まっているが、I5 はまだ approved で main にマージされていない（algr/I5 は未マージ。I5 も agent.py・README.md・stats.py・tests/test_agent.py・tests/test_loop.py を変える）。I6 には I5 への依存（depends）も付いていない。I5 …", "reason": "no_match"}
+{"ts": "2026-10-25T20:49:28+09:00", "event": "applied", "rule_id": "R013", "problem": "要望の文案をどこに置くか", "decision": "I8-1"}
+{"ts": "2026-10-25T20:49:28+09:00", "event": "applied", "rule_id": "R009", "problem": "提案の記録に持たせる ID と出どころの項目", "decision": "I8-2"}
+{"ts": "2026-10-25T20:49:28+09:00", "event": "applied", "rule_id": "R011", "problem": "決まった提案の履歴をどこに残すか", "decision": "I8-3"}
+{"ts": "2026-10-25T20:49:28+09:00", "event": "applied", "rule_id": "R008", "problem": "algr の手元の proposals.json の移し方", "decision": "I8-4"}
+{"ts": "2026-10-25T20:49:28+09:00", "event": "applied", "rule_id": "R007", "problem": "既存の k2down コマンドの扱いと、要望の範囲", "decision": "I8-5"}
+{"ts": "2026-10-25T20:50:32+09:00", "event": "escalated", "decision": "I9-1", "problem": "algr show で失敗の理由を読めるようにするとき、理由をどこから出すか。いまの algr show はタスクの記録（Task）をそのまま出すが、Task には失敗の理由を持つ項目が無い。理由は events.jsonl の task.failed イベントの message にしか残っていない。また LocalProcess.status の message は 'exit 1' だけで、…", "reason": "no_match"}
+{"ts": "2026-10-25T20:53:43+09:00", "event": "applied", "rule_id": "R014", "problem": "依存を変える人の操作の置き場所", "decision": "I10-1"}
+{"ts": "2026-10-25T20:53:43+09:00", "event": "applied", "rule_id": "R002", "problem": "依存の変更をイベントにするか", "decision": "I10-2"}
+{"ts": "2026-10-25T20:53:43+09:00", "event": "applied", "rule_id": "R007", "problem": "CLI の形", "decision": "I10-3"}
+{"ts": "2026-10-25T20:53:44+09:00", "event": "applied", "rule_id": "R007", "problem": "依存先の検証", "decision": "I10-4"}
+{"ts": "2026-10-25T20:53:44+09:00", "event": "applied", "rule_id": "R007", "problem": "どの状態で依存を変えられるか", "decision": "I10-5"}
+{"ts": "2026-10-25T20:53:44+09:00", "event": "applied", "rule_id": "R006", "problem": "UI に依存変更の操作を足すか", "decision": "I10-6"}
+{"ts": "2026-10-25T20:53:44+09:00", "event": "applied", "rule_id": "R007", "problem": "README での位置付け", "decision": "I10-7"}
+{"ts": "2026-10-25T20:55:45+09:00", "event": "escalated", "decision": "I11-1", "problem": "purpose が前提にしている `algr distill` はまだありません。CLI にあるのは proposals / accept / decline だけで、蒸留が起きるのは人が答えたとき（to_distill）だけです。このタスクで何を測り、何を作るかを決めてください", "reason": "no_match"}
+{"ts": "2026-10-25T20:55:46+09:00", "event": "escalated", "decision": "I11-2", "problem": "提案の重なりや重複の数を測ったあと、周期の蒸留が「要る」かを誰がどう決めるか", "reason": "no_match"}
+{"ts": "2026-10-25T20:55:46+09:00", "event": "escalated", "decision": "I11-3", "problem": "周期の蒸留を入れる場合、起動の周期をどこで決めるか。`.algr/` の設定やトリガーアダプタの IF を変えると安全網 1 に当たります。R016 があるのでアダプタ IF は変えません", "reason": "no_match"}
+{"ts": "2026-10-25T20:56:16+09:00", "event": "escalated", "decision": "I12-1", "problem": "I12 は I8（approved、ブランチ algr/I8 の docs/k2down-request-proposals.md）と目的が同じ。I8 は I3-7 から切り出したタスクで、内容は外す提案を proposals_file に足した経緯、R013 に沿って提案の足す・外す・accept・却下を k2down に持たせる CLI（propose / proposals / accep…", "reason": "no_match"}
+{"ts": "2026-10-25T21:06:24+09:00", "event": "decided", "decision": "I5-5", "predicted": "agent.py に USAGE_KINDS として置き、stats は usage にある項目をそのまま集計する（項目名を二重に持たない）", "actual": "agent.py に USAGE_KINDS として置き、stats は usage にある項目をそのまま集計する（項目名を二重に持たない）", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:24+09:00", "event": "decided", "decision": "I5-6", "predicted": "値をすべて足しているので変えない。合計は今までと同じになる", "actual": "値をすべて足しているので変えない。合計は今までと同じになる", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-1", "predicted": "docs/k2down-request-proposals.md に置き、I8 の範囲として CLI・記録の形・ID の分け方・アダプタの移し方・人に決めてもらうことを 1 つにまとめる。k2down には送らない", "actual": "docs/k2down-request-proposals.md に置き、I8 の範囲として CLI・記録の形・ID の分け方・アダプタの移し方・人に決めてもらうことを 1 つにまとめる。k2down には送らない", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-2", "predicted": "対象のルール ID は rule_id、判断 ID は decision、ID で表せない出どころは source（自由記述）に分ける案にする", "actual": "対象のルール ID は rule_id、判断 ID は decision、ID で表せない出どころは source（自由記述）に分ける案にする", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-3", "predicted": "提案の記録はまだ決まっていない提案だけを持ち、決まった提案の履歴は usage.jsonl の proposed / accepted / declined のイベントだけに残す案にする", "actual": "提案の記録はまだ決まっていない提案だけを持ち、決まった提案の履歴は usage.jsonl の proposed / accepted / declined のイベントだけに残す案にする", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-4", "predicted": "移す前に accept か decline で空にし、移行のためのコードは持たない。DecisionStore の IF は変えない", "actual": "移す前に accept か decline で空にし、移行のためのコードは持たない。DecisionStore の IF は変えない", "outcome": "hit"}
+{"ts": "2026-10-25T21:06:26+09:00", "event": "decided", "decision": "I8-5", "predicted": "既存のコマンドは変えずに propose / proposals / accept / decline を足す案にする。I2 のノードの要望は『併せて出すもの』として分けて書き、まとめるかは人に決めてもらう", "actual": "既存のコマンドは変えずに propose / proposals / accept / decline を足す案にする。I2 のノードの要望は『併せて出すもの』として分けて書き、まとめるかは人に決めてもらう", "outcome": "hit"}

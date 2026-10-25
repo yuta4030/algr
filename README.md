@@ -8,6 +8,18 @@ algr（/ˈælɡər/、アルガー）は、Algorithmic Development という働�
 
 いまはフェーズ0（境界を引く）です。algr 本体とフェイクアダプタだけで、ループが一周します。
 
+## 人の役割
+
+人は処理の中から抜け、処理の外側で 2 つの立場に立ちます。
+
+| 立場 | やること | 答える判断 | 操作 |
+|---|---|---|---|
+| クライアント | 何をやるか、目的、こだわり度を伝える | 「何を大事にするか」が問われるもの | `algr new`、`algr answer` |
+| メタプログラマー | 何を自動で通してよいかを決める。ルールを見直し、他チームとの境界（公開する IF や API の契約）を守る | 「どこまで任せてよいか」が問われるもの | `algr accept` / `decline`、`algr merge`、`algr reopen` |
+
+ルールで決まらない判断は、文脈を一番持っている起票の瞬間に寄せます。人が答えた判断は蒸留エージェントがルールにし、
+メタプログラマーが受け入れたものだけがルールになります。使うほど人に上がる判断は減り、起票でも人が答えない状態（Touchless）に近づきます。
+
 ## 必要なもの
 
 - Python 3.11+
@@ -40,7 +52,7 @@ algr accept P001                                   # 提案をルールにする
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
 STP 率（人の回答・やり直し・マージが一度も入らずに done になった割合）、タスクあたりの人の介入回数、人の判断にかかる時間の中央値、
-タスクあたりのトークン数を出します。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`）と終了（`job`）、hook の失敗（`hook_error`）も時刻付きで残ります。
+タスクあたりのトークン数（合計と、キャッシュの読み込み・書き込みを分けた項目ごと）を出します。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`）と終了（`job`）、hook の失敗（`hook_error`）も時刻付きで残ります。
 
 `algr watch` は常駐して tick を回し続けます（`--interval` 秒ごと）。トリガーの取り込みと ready の配車が止まらないようにするためのプロセスで、
 起きたイベントを 1 行ずつ出します。SIGINT（Ctrl-C）か SIGTERM で、いまの tick を終えてから止まります。
@@ -211,7 +223,9 @@ model = "haiku"
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。
-結果に `"usage": {"input_tokens", "output_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、`algr stats` の `tokens_per_task` に出します。
+結果に `"usage": {"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、
+`algr stats` の `tokens_per_task`（全項目の合計）と `tokens_per_task_by_kind`（項目ごと）に出します。項目の意味は Claude の API の usage と同じで、
+`input_tokens` はキャッシュを除いた分です。キャッシュの 2 項目は省いてかまいません。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。
 
 ### k2down
