@@ -30,3 +30,15 @@
 {"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-13", "predicted": "Task.approved をやめ、state に approved を足す。review.approved で review → approved、task.done で approved → done。判定は task.state == approved だけで、events.jsonl には頼らない", "actual": "Task.approved をやめ、state に approved を足す。review.approved で review → approved、task.done で approved → done。判定は task.state == approved だけで、events.jsonl には頼らない", "outcome": "hit"}
 {"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-15", "predicted": "task.done と task.failed だけ。rework / pr.updated のイベントは足さない", "actual": "task.done と task.failed だけ。rework / pr.updated のイベントは足さない", "outcome": "hit"}
 {"ts": "2026-10-24T15:18:54+00:00", "event": "decided", "decision": "I2-16", "predicted": "EVENT_DATA は据え置き。README の表の文言は変えず、フロー図の行と状態数（8 つ）を直した", "actual": "EVENT_DATA は据え置き。README の表の文言は変えず、フロー図の行と状態数（8 つ）を直した", "outcome": "hit"}
+{"ts": "2026-10-25T12:44:23+09:00", "event": "escalated", "decision": "I1-1", "problem": "人の答えに従った判断を Decision にどう持たせるか（question_ids を足して by を human にする / rule_ids に未決事項 ID を混ぜる）", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:23+09:00", "event": "escalated", "decision": "I1-2", "problem": "レビューは人の答えだけを見るか、ルールで埋まった未決事項（by=rule）も同じく突き合わせるか", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:23+09:00", "event": "escalated", "decision": "I1-3", "problem": "人の答えに従った判断（rule_ids が空で、従った未決事項の ID だけを持つ判断）を、判断ストア（DecisionStore.apply、k2down）にも記録するか。いまの engine は rule_ids があるときだけ apply している", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-1", "problem": "k2down の木のノードで持つ / algr 側の Rule に scope を足す", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-2", "problem": "役（起票・実装・レビュー・蒸留）/ 触る領域（ファイルやモジュール）/ 両方", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-3", "problem": "タスクがどの範囲に当たるかを、何で照合するか。起票の時点ではまだファイルに触れていないので、触る領域で絞る場合、何を照合の材料にするかを決める", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-4", "problem": "範囲を持たない既存のルール（R001〜R006 など）を、絞り込んだあとのジョブに渡すかどうか", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-5", "problem": "ルールの範囲を誰がいつ付けるか", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-6", "problem": "レビューのジョブに渡すルールも絞るかどうか。絞ると、実装が引いたルールがレビューの入力に無く、『知らないルールを引いている』として差し戻される場合がある", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-7", "problem": "1 件 194 万トークンの主な原因がルールの量かどうか。今のルールは 6 件程度で、絞り込みだけでは消費が下がらないおそれがある。原因を調べてから進めるか、絞り込みだけを入れるか", "reason": "no_match"}
+{"ts": "2026-10-25T12:44:52+09:00", "event": "escalated", "decision": "I2-8", "problem": "rules.json（fake の RuleFile と k2down）の形と Rule の IF が変わるときに、範囲を持たない旧形式のファイルも読めるようにするかどうか（ファイルの形式と公開 IF の変更なので、人の確認が要る）", "reason": "no_match"}
+{"ts": "2026-10-25T13:09:42+09:00", "event": "retired", "rule_id": "R005"}
