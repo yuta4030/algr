@@ -329,8 +329,9 @@ function render() {
   if (openId) detail(openId);
 }
 
-function ground(rule_ids, by) {
+function ground(rule_ids, by, question_ids) {
   if (rule_ids && rule_ids.length) return `<span class="ground rule mono">${rule_ids.join(" ")}</span>`;
+  if (question_ids && question_ids.length) return `<span class="ground ${by} mono">${question_ids.join(" ")}</span>`;
   if (by === "human") return `<span class="ground human">人</span>`;
   return `<span class="ground agent">根拠なし</span>`;
 }
@@ -341,7 +342,7 @@ function detail(id) {
   openId = id;
   const [kind, label] = who(t);
   const qs = t.questions.map((q) => `<div class="item"><span class="mono mute">${q.id}</span><span>${esc(q.text)}${q.answer !== null ? `<br><span class="a">${esc(q.answer)}</span>` : q.recommended ? `<br><span class="mute">推奨 ${esc(q.recommended)}</span>` : ""}</span>${q.answer === null ? `<span class="ground open">未決</span>` : ground(q.rule_ids, q.by)}</div>`).join("");
-  const ds = t.decisions.map((d) => `<div class="item"><span class="mono mute">${d.id}</span><span>${esc(d.text)}<br><span class="a">${esc(d.answer)}</span></span>${ground(d.rule_ids, "agent")}</div>`).join("");
+  const ds = t.decisions.map((d) => `<div class="item"><span class="mono mute">${d.id}</span><span>${esc(d.text)}<br><span class="a">${esc(d.answer)}</span></span>${ground(d.rule_ids, d.by, d.question_ids)}</div>`).join("");
   const tone = (n) => (["decision.requested", "review.escalated", "decision.resolved", "task.reopened"].includes(n) ? "human" : n === "task.failed" ? "bad" : n === "task.done" ? "ok" : "");
   const usage = Object.values(t.usage || {}).reduce((a, b) => a + b, 0);
   $("drawer").innerHTML = `

@@ -72,7 +72,38 @@ def test_questions_and_decisions_are_kept_apart(engine):
     task = engine.tasks.get("I1")
     # 未決事項は起票で人やルールが埋めたもの、判断は実装エージェントが PR に載せたもの
     assert [(q.id, q.answer, q.by) for q in task.questions] == [("I1-1", "redis", "human")]
-    assert [(d.id, d.answer, d.rule_ids, d.by) for d in task.decisions] == [("I1-2", "OAuth", ["R001"], "rule")]
+    assert [(d.id, d.answer, d.rule_ids, task.decided_by(d)) for d in task.decisions] == [("I1-2", "OAuth", ["R001"], "rule")]
+
+
+def test_decision_following_a_human_answer_is_grounded_by_it(engine):
+    engine.create("follow answers", questions=[{"text": "Session store?", "topic": "session"}])
+    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    engine.resolve("I1", {"I1-1": "redis"})
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    task = engine.tasks.get("I1")
+    # 人の答えに従った判断は根拠なしにならず、レビューも通る。判断ストアには重ねて記録しない
+    d = task.decision("I1-2")
+    assert (d.rule_ids, d.question_ids, task.decided_by(d)) == ([], ["I1-1"], "human")
+    assert "review.escalated" not in names(engine, "I1")
+    assert {u["decision"] for u in engine.decisions.usage() if "decision" in u} == {"I1-1"}
+
+
+def test_decision_following_a_rule_fill_inherits_rule(engine):
+    engine.decisions.add("db: postgres")
+    engine.create("follow fills", questions=[{"text": "Which database?", "topic": "db"}])
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    task = engine.tasks.get("I1")
+    d = task.decision("I1-2")
+    # ルール ID は未決事項の側にだけ残り、hit も未決事項の側でだけ記録される
+    assert (d.rule_ids, task.decided_by(d)) == ([], "rule")
+    usage = [(u["event"], u["decision"]) for u in engine.decisions.usage() if "decision" in u]
+    assert usage == [("applied", "I1-1"), ("decided", "I1-1")]
+
+
+def test_decision_following_an_unknown_question_fails(engine):
+    engine.create("follow-bad")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert engine.events[-1].data["message"] == "decisions follow unknown questions: I99-1"
 
 
 def test_events_are_logged_to_state_dir(engine, repo):
@@ -109,7 +140,7 @@ def test_review_escalates_decisions_without_rules(engine):
     task = engine.tasks.get("I1")
     assert "review.escalated" in names(engine, "I1")
     # 根拠の無い判断 I1-1 は、推奨案付きの未決事項 I1-2 として起票に差し戻される
-    assert [(d.id, d.by) for d in task.decisions] == [("I1-1", "agent")]
+    assert [(d.id, task.decided_by(d)) for d in task.decisions] == [("I1-1", "agent")]
     q = task.question("I1-2")
     assert (q.text, q.open, q.recommended) == ("Module name", True, "util")
 

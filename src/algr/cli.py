@@ -85,7 +85,7 @@ def _task_text(task: Task) -> str:
             grounds = f" [{' '.join(q.rule_ids)}]" if q.rule_ids else f" [{q.by}]"
             lines.append(f"  = {q.id} {q.text} -> {q.answer}{grounds}")
     for d in task.decisions:
-        grounds = f" [{' '.join(d.rule_ids)}]" if d.rule_ids else " [agent]"
+        grounds = f" [{' '.join(d.rule_ids or d.question_ids)}]" if d.rule_ids or d.question_ids else " [agent]"
         lines.append(f"  * {d.id} {d.text} -> {d.answer}{grounds}")
     for change in task.feedback:
         lines.append(f"  ! {change}")

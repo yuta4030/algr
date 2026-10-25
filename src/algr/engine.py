@@ -412,10 +412,18 @@ class Engine:
             q = task.add_question(r["text"], r.get("topic", ""), recommended=r.get("recommended"))
             self.emit("task.returned", task, questions=[q.id])
             return
+        known = {q.id for q in task.questions}
+        cited = {qid for d in result.decisions for qid in d.get("question_ids", [])}
+        if unknown := sorted(cited - known):
+            self.emit("task.failed", task, role=str(Role.IMPLEMENT), message=f"decisions follow unknown questions: {' '.join(unknown)}")
+            return
         # 判断の一覧は PR ごとに出し直す。前の回の判断は、新しい PR の一覧で置き換える
         task.pr, task.decisions, task.feedback = result.pr, [], []
         for d in result.decisions:
-            decision = task.add_decision(d["text"], d["answer"], d.get("topic", ""), d.get("rule_ids"))
+            decision = task.add_decision(
+                d["text"], d["answer"], d.get("topic", ""), d.get("rule_ids"), d.get("question_ids")
+            )
+            # 未決事項の答えに従った判断は記録しない。答えは decide や apply で既に残っている
             if decision.rule_ids:
                 self.decisions.apply(decision.id, decision.text, decision.rule_ids)
         self.emit("task.submitted", task, pr=task.pr)
@@ -510,9 +518,9 @@ class Engine:
         self.notifier.notify(task, f"{task.id} was escalated in review: {' '.join(event.data['questions'])}")
 
     def _on_task_done(self, task: Task, event: Event) -> None:
-        # マージされたので、ルールに従った判断を hit として記録する
+        # マージされたので、ルールに従った判断を hit として記録する。未決事項に従った判断は未決事項の側で記録される
         for item in [*task.questions, *task.decisions]:
-            if item.by == "rule":
+            if item.rule_ids:
                 self.decisions.decide(item.id, "hit", item.answer or "", predicted=item.answer)
         self.tasks.comment(task.id, f"merged: {task.pr}")
 

@@ -6,7 +6,8 @@
 役ごとの結果（JSON）：
 - intake：   {"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}
              fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
-- implement：{"pr": str, "decisions": [{"text", "answer", "topic"?, "rule_ids"?}]}
+- implement：{"pr": str, "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}
+             question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
              想定外の判断が出たら、勝手に決めずに {"returned": {"text", "topic"?, "recommended"?}}
 - review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
              objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
@@ -74,7 +75,7 @@ def job_input(role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] |
         data["previous"] = {"pr": task.pr, "decisions": [asdict(d) for d in task.decisions]}
         data["feedback"] = list(task.feedback)
     if role == Role.REVIEW:
-        # 人が答えた未決事項は人のゲートを通っているので、異議の対象にしない
+        # 人が答えた未決事項は人のゲートを通っているので、異議の対象にしない。判断がそれに従っているかは確かめる
         data["settled"] = [q.id for q in task.questions if q.by == "human"]
     if role == Role.DISTILL:
         data["questions"] = [asdict(q) for q in task.questions if q.id in task.to_distill]
@@ -122,6 +123,11 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
             _texts([returned], "text")
             return ImplementResult(returned=returned, tasks=_tasks(data))
         decisions = _texts(data.get("decisions", []), "text", "answer")
+        for d in decisions:
+            for key in ("rule_ids", "question_ids"):
+                ids = d.get(key, [])
+                if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+                    raise ResultError(f"decisions[].{key} must be a list of IDs")
         return ImplementResult(pr=_need(data, "pr", str), decisions=decisions, tasks=_tasks(data))
     if role == Role.REVIEW:
         objections = data.get("objections", {})
