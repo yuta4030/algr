@@ -132,7 +132,7 @@ class LocalProcess:
     コマンドには環境変数 ALGR_JOB_ID / ALGR_ROLE / ALGR_JOB_FILE / ALGR_RESULT_FILE が渡る。
     ALGR_JOB_FILE には {"id", "role", "task", "input"} が入っている。
     コマンドは ALGR_RESULT_FILE に役ごとの結果（algr.agents を参照）を JSON で書いて終了する。
-    結果に "usage"（使ったトークン数）を添えると、結果から外して RunStatus.usage で返す。
+    結果に "usage"（使ったトークン数）と "turns"（往復の回数）を添えると、結果から外して RunStatus.usage と RunStatus.turns で返す。
     algr の起動をまたいでも状態を追えるよう、pid と終了コードはファイルに残す。
     """
 
@@ -189,9 +189,10 @@ class LocalProcess:
         result_path = run / "result.json"
         result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
         usage = result.pop("usage", {}) if isinstance(result, dict) else {}
+        turns = int(result.pop("turns", 0)) if isinstance(result, dict) else 0
         if code != 0 or not result:
-            return RunStatus(RunState.FAILED, result, message=f"exit {code}", usage=usage)
-        return RunStatus(RunState.COMPLETED, result, usage=usage)
+            return RunStatus(RunState.FAILED, result, message=f"exit {code}", usage=usage, turns=turns)
+        return RunStatus(RunState.COMPLETED, result, usage=usage, turns=turns)
 
     def running(self) -> int:
         if not self.dir.exists():

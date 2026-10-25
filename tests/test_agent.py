@@ -51,13 +51,17 @@ model = "small"
     return Engine.from_config(Config.load(repo))
 
 
-def test_loop_with_claude(claude_engine, tmp_path):
+def test_loop_with_claude(claude_engine, repo, tmp_path):
     engine = claude_engine
     engine.create("Add login")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
     # キャッシュの読み込みは入力に足さず、別の項目に数える
     assert task.usage == {"input_tokens": 30, "output_tokens": 15, "cache_read_input_tokens": 270, "cache_creation_input_tokens": 0}
+
+    # 往復の回数はトークン数と分けて、ジョブの終了の記録に残す
+    ends = [json.loads(line) for line in (repo / ".algr" / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [e["turns"] for e in ends if "job" in e] == [4, 4, 4]
 
     log = tmp_path / "claude"
     prompt = (log / "I1.review.3.prompt.md").read_text(encoding="utf-8")
