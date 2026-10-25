@@ -78,6 +78,8 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 
 人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の承認済みの review だけです。
 人が答えると必ず起票に戻り、そこから主経路に合流します。人に聞くときは必ず通知します。
+failed になった理由（`role` と `message`）はタスクの `failure` に残り、`algr show` で読めます。reopen すると消えます。
+エージェントが落ちたときの `message` には、エージェントの出力（`algr.agent` なら claude の `result` や `is_error`）の最後の方が入ります。
 
 イベント名とペイロード（`Event.data`）の形は固定です（`src/algr/flow.py` の `TRANSITIONS` と `EVENT_DATA`）。
 どのイベントにも遷移元の状態 `from` が付き（`task.created` は `""`）、決断 ID の並びは必ず `questions` で渡します。
