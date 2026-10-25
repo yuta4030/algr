@@ -22,6 +22,10 @@ log.mkdir(parents=True, exist_ok=True)
 if "agent-error" in job["task"]["title"]:
     print(json.dumps({"type": "result", "is_error": True, "result": "budget exceeded"}))
     sys.exit(0)
+if "auth-error" in job["task"]["title"]:
+    # 認証の期限切れ：終了コード 1 で、原因は標準出力の JSON にだけ書かれる
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": "OAuth token has expired"}))
+    sys.exit(1)
 result = fake_agent.run(job)
 answer = "結果です。\n\n```json\n" + json.dumps(result, ensure_ascii=False) + "\n```\n"
 usage = {"input_tokens": 10, "cache_read_input_tokens": 90, "output_tokens": 5}

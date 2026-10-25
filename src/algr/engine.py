@@ -188,7 +188,7 @@ class Engine:
         task = self.tasks.get(task_id)
         if task.state != State.FAILED:
             raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
-        task.reworks = 0
+        task.reworks, task.failure = 0, None
         self.emit("task.reopened", task, note=note)
         return self.tasks.get(task_id)
 
@@ -391,7 +391,12 @@ class Engine:
             self.tasks.save(task)
             self.notifier.notify(task, f"{task.id} distill failed: {message}")
         else:
-            self.emit("task.failed", task, role=str(role), message=message)
+            self._fail(task, role, message)
+
+    def _fail(self, task: Task, role: Role, message: str) -> None:
+        """タスクを failed にする。理由はタスクに持ち、algr show と reopen までの表示はそこから読む。"""
+        task.failure = {"role": str(role), "message": message}
+        self.emit("task.failed", task, role=str(role), message=message)
 
     def _job_done(self, task: Task, result: Any) -> None:
         if isinstance(result, IntakeResult):
@@ -443,7 +448,7 @@ class Engine:
         known = {q.id for q in task.questions}
         cited = {qid for d in result.decisions for qid in d.get("question_ids", [])}
         if unknown := sorted(cited - known):
-            self.emit("task.failed", task, role=str(Role.IMPLEMENT), message=f"decisions follow unknown questions: {' '.join(unknown)}")
+            self._fail(task, Role.IMPLEMENT, f"decisions follow unknown questions: {' '.join(unknown)}")
             return
         # 判断の一覧は PR ごとに出し直す。前の回の判断は、新しい PR の一覧で置き換える
         task.pr, task.decisions, task.feedback = result.pr, [], []
@@ -459,7 +464,7 @@ class Engine:
     def _review_done(self, task: Task, result: ReviewResult) -> None:
         known = {q.id for q in task.questions} | {d.id for d in task.decisions}
         if unknown := sorted(set(result.objections) - known):
-            self.emit("task.failed", task, role=str(Role.REVIEW), message=f"objections to unknown decisions: {' '.join(unknown)}")
+            self._fail(task, Role.REVIEW, f"objections to unknown decisions: {' '.join(unknown)}")
             return
         # 人が答えた未決事項は人のゲートを通っているので、異議があっても蒸し返さない
         settled = {q.id for q in task.questions if q.by == "human"}
@@ -473,7 +478,7 @@ class Engine:
         elif result.objections:
             self._approved(task)  # 異議がすべて人の決めたことへのものだった
         else:
-            self.emit("task.failed", task, role=str(Role.REVIEW), message="review rejected without objections")
+            self._fail(task, Role.REVIEW, "review rejected without objections")
 
     def _approved(self, task: Task) -> None:
         if not self.merge_gate:
@@ -484,7 +489,7 @@ class Engine:
     def _request_changes(self, task: Task, changes: list[str]) -> None:
         if task.reworks >= self.max_rework:
             message = f"review asked for changes more than {self.max_rework} times: {'; '.join(changes)}"
-            self.emit("task.failed", task, role=str(Role.REVIEW), message=message)
+            self._fail(task, Role.REVIEW, message)
             return
         task.reworks += 1
         task.feedback = list(changes)

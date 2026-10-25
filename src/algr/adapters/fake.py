@@ -191,7 +191,11 @@ class LocalProcess:
         usage = result.pop("usage", {}) if isinstance(result, dict) else {}
         turns = int(result.pop("turns", 0)) if isinstance(result, dict) else 0
         if code != 0 or not result:
-            return RunStatus(RunState.FAILED, result, message=f"exit {code}", usage=usage, turns=turns)
+            # エージェントが stderr に残した原因を添える。log はジョブの出力をすべて持つので、最後の方だけ
+            log = run / "log"
+            tail = log.read_text(encoding="utf-8", errors="replace").strip()[-500:] if log.exists() else ""
+            message = f"exit {code}: {tail}" if tail else f"exit {code}"
+            return RunStatus(RunState.FAILED, result, message=message, usage=usage, turns=turns)
         return RunStatus(RunState.COMPLETED, result, usage=usage, turns=turns)
 
     def running(self) -> int:

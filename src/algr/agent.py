@@ -72,17 +72,36 @@ def command(agent: dict[str, Any]) -> list[str]:
     return argv + [str(a) for a in agent.get("args", [])]
 
 
+def _tail(text: str, n: int = 500) -> str:
+    return text.strip()[-n:]
+
+
+def _describe(out: Any, stderr: str) -> str:
+    """失敗した claude の出力から、原因が読める部分を 1 行にまとめる。"""
+    if not isinstance(out, dict):
+        return _tail(json.dumps(out, ensure_ascii=False))
+    parts = [f"{k}={out[k]}" for k in ("subtype", "is_error", "api_error_status") if out.get(k) is not None]
+    if out.get("result"):
+        parts.append(f"result={_tail(str(out['result']))}")
+    if out.get("errors"):
+        parts.append(f"errors={_tail(json.dumps(out['errors'], ensure_ascii=False))}")
+    if stderr.strip():
+        parts.append(f"stderr={_tail(stderr)}")
+    return " ".join(parts) or _tail(json.dumps(out, ensure_ascii=False))
+
+
 def run(job: dict[str, Any], root: Path) -> dict[str, Any]:
     agent = job["input"].get("agent", {})
     proc = subprocess.run(command(agent), input=build_prompt(job, root), capture_output=True, text=True, encoding="utf-8", cwd=root, check=False)
-    if proc.returncode != 0:
-        raise AgentError(f"claude exited {proc.returncode}: {proc.stderr.strip()[-500:]}")
     try:
         out = json.loads(proc.stdout)
     except json.JSONDecodeError as e:
+        if proc.returncode != 0:
+            raise AgentError(f"claude exited {proc.returncode}: {_tail(proc.stderr or proc.stdout)}") from e
         raise AgentError(f"claude did not print JSON: {e}") from e
-    if out.get("is_error"):
-        raise AgentError(f"claude reported an error: {str(out.get('result', ''))[-500:]}")
+    if proc.returncode != 0 or not isinstance(out, dict) or out.get("is_error"):
+        # 終了コードが 0 でなくても、標準出力の JSON に原因（期限切れの認証など）が書かれていることが多い
+        raise AgentError(f"claude exited {proc.returncode}: {_describe(out, proc.stderr)}")
     result = extract(str(out.get("result", "")))
     usage = out.get("usage") or {}
     # Claude の API と同じ意味で持つ。input_tokens はキャッシュを除いた分で、キャッシュの読み込みと書き込みは別に数える

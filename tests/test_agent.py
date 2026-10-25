@@ -78,4 +78,17 @@ def test_agent_error_fails_the_task(claude_engine):
     engine = claude_engine
     engine.create("agent-error")
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
-    assert engine.notifier.sent()[-1]["message"] == "I1 failed: exit 1"
+    message = engine.notifier.sent()[-1]["message"]
+    assert message.startswith("I1 failed: exit 1: ") and "budget exceeded" in message
+
+
+def test_failed_claude_keeps_its_output(claude_engine):
+    engine = claude_engine
+    engine.create("auth-error")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    # 終了コードが 0 でなくても、標準出力の JSON に書かれた原因を捨てない
+    assert "OAuth token has expired" in engine.notifier.sent()[-1]["message"]
+    failure = engine.tasks.get("I1").failure
+    assert failure["role"] == "intake" and "claude exited 1: subtype=success is_error=True result=OAuth" in failure["message"]
+    engine.reopen("I1")
+    assert engine.tasks.get("I1").failure is None

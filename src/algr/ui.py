@@ -32,11 +32,10 @@ def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]
     """タスクがいまどこにいて、誰の手にあるか。"""
     names = [e["name"] for e in events]
     stage = DETOUR.get(task.state, task.state)
-    failure = None
+    failure = task.failure if task.state == State.FAILED else None
     if task.state == State.FAILED:
         last = next((e for e in reversed(events) if e["name"] == "task.failed"), None)
         stage = State(last["data"]["from"]) if last else State.INTAKE
-        failure = {"role": last["data"]["role"], "message": last["data"]["message"]} if last else None
     blocked_by = [d for d in task.depends if states.get(d) != State.DONE] if task.state == State.READY else []
     if task.state in (State.NEEDS_DECISION, State.FAILED) or task.state == State.APPROVED:
         waiting = "human"
