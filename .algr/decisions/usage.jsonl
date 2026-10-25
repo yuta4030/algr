@@ -42,3 +42,21 @@
 {"ts": "2026-10-25T12:44:51+09:00", "event": "escalated", "decision": "I2-7", "problem": "1 件 194 万トークンの主な原因がルールの量かどうか。今のルールは 6 件程度で、絞り込みだけでは消費が下がらないおそれがある。原因を調べてから進めるか、絞り込みだけを入れるか", "reason": "no_match"}
 {"ts": "2026-10-25T12:44:52+09:00", "event": "escalated", "decision": "I2-8", "problem": "rules.json（fake の RuleFile と k2down）の形と Rule の IF が変わるときに、範囲を持たない旧形式のファイルも読めるようにするかどうか（ファイルの形式と公開 IF の変更なので、人の確認が要る）", "reason": "no_match"}
 {"ts": "2026-10-25T13:09:42+09:00", "event": "retired", "rule_id": "R005"}
+{"ts": "2026-10-25T13:10:11+09:00", "event": "decided", "decision": "I1-1", "actual": "question_ids を足し、by を human にする。理由：判断の根拠は、出どころ（ルールか人の答えか）ごとに別の項目で持つ。種類の違う ID を 1 つの項目に混ぜると、記録や集計で見分けられなくなる", "outcome": "none"}
+{"ts": "2026-10-25T13:10:12+09:00", "event": "decided", "decision": "I1-2", "actual": "ルールで埋まった未決事項も、同じように突き合わせる。理由：ルールで埋まった答えも人の答えと同じく従うべき前提であり、埋めた経路によって確かめるかどうかを変えない", "outcome": "none"}
+{"ts": "2026-10-25T13:10:12+09:00", "event": "decided", "decision": "I1-3", "actual": "記録しない。理由：同じ事実は 1 か所にだけ記録する。人の答えは decide で残っており、それに従った判断を apply で重ねても、ルールの当たり外れは何も増えない", "outcome": "none"}
+{"ts": "2026-10-25T13:10:12+09:00", "event": "decided", "decision": "I2-1", "actual": "k2down 側で持つ方向で考える。共通ルールと役ごとのルールを、k2down の木のノードや override のような機能で持てないか検討し、k2down への要望が要るならその形をまとめて人に上げる。理由：ルールの保存と構造は判断ストア（k2down）の責務で、algr のコアは判断の保存を持たない", "outcome": "none"}
+{"ts": "2026-10-25T13:10:12+09:00", "event": "decided", "decision": "I2-2", "actual": "任せる（R007）", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-3", "actual": "任せる（R007）", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-4", "actual": "任せる（R007）", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-5", "actual": "任せる（R007）", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-6", "actual": "任せる（R007）", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-7", "actual": "先に usage の内訳を調べ、別の原因があれば別タスクに起票する。理由：最適化は、効いている原因を測ってから入れる。測らずに入れると、複雑さだけが増えて効果が出ないことがある", "outcome": "none"}
+{"ts": "2026-10-25T13:10:13+09:00", "event": "decided", "decision": "I2-8", "actual": "互換は要らない（R008）。手元の rules.json は移行してよい", "outcome": "none"}
+{"ts": "2026-10-25T13:10:45+09:00", "event": "escalated", "decision": "I1-4", "problem": "ルールで埋まった未決事項（by=rule）に従った判断の Decision.by を何にするか。I1-1 は人の答えに従った判断を by=human にすると決めたが、I1-2 でルールで埋まった未決事項も突き合わせの対象になったため、それに従った判断の by が決まっていない（いまの by は rule_ids の有無だけで rule / agent を返すプロパティ）", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-1", "problem": "タスクに属さないジョブ（周期の蒸留、人の方針からの蒸留）の置き場所。今の Job は task を必ず持ち、ジョブ ID は task.id から振られ、poll はタスクの jobs を回して走っているジョブを見つけるので、タスクの外のジョブを持つ場所が無い。コアは保存を持たない制約があるため、アダプタ IF（ExecutorAdapter.start の Job、TaskAdapter か …", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-2", "problem": "人の方針を受け取る入口の形。CLI のサブコマンド（例：algr distill \"<方針>\"）を足すか、inbox トリガーのイベントとして受けるか、両方か。どちらも公開 IF（CLI・イベント・README の表）に項目を足すことになる", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-3", "problem": "ルールを外す（retire）提案を蒸留エージェントが出せるようにするか。今の DistillResult は rules: [{rule, source}] だけで、DecisionStore.propose も追加の提案しか持たない。R005 の外しを通すには、結果の形と DecisionStore の IF に「外す・置き換える」提案を足す必要があり、ルールの削除（安全網 2）にも当たる", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-4", "problem": "周期の蒸留の入力と「前回からの分」の持ち方。タスクをまたいで人の答えを集めるには、どこまで蒸留済みかを覚える必要があるが、R003 により events.jsonl には頼れない。また、今の即提案（答えるたびに to_distill から distill を出す）を周期に置き換えるか、残すかを決める", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-5", "problem": "周期の起動をどこで決めるか。TriggerAdapter.poll が周期のイベントを出すのか、watch の設定（例：[distill] interval）で engine が起動するのか。推奨は「起動の周期はトリガーで決める」だが、inbox トリガーに時刻を見る機能は無い", "reason": "no_match"}
+{"ts": "2026-10-25T13:13:26+09:00", "event": "escalated", "decision": "I3-6", "problem": "R007・R008 と R005 の外しの「通し直し」の仕方。既に k2down に入っている R007・R008 をいったん外してから入口で提案し直すのか、入れたまま同じ方針を入口に流し、既存ルールとの重複・衝突として正しく扱われるかを見るのか。前者はルールの削除（安全網 2）に当たる", "reason": "no_match"}
