@@ -5,8 +5,10 @@
 
 import json
 
+import pytest
 from conftest import run_until, state
 
+from algr.flow import TransitionError
 from algr.model import Event, State, Task
 
 
@@ -383,6 +385,33 @@ def test_follow_up_with_unknown_dependency_fails_the_job(engine):
     engine.create("spawn-bad")
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
     assert "unknown tasks: I99" in engine.notifier.sent()[-1]["message"]
+
+
+def test_depends_can_be_changed_later(engine, repo):
+    engine.create("first slow")
+    engine.create("second", depends=["I1"])
+    engine.create("third")
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS and state(engine, "I2") == State.READY)
+    assert engine.depend("I2", add=["I3", "I3"]).depends == ["I1", "I3"]
+    assert engine.depend("I2", remove=["I1", "I3"]).depends == []
+    run_until(engine, lambda: state(engine, "I2") == State.DONE)  # 依存を外したので、I1 を待たずに配車される
+    assert state(engine, "I1") == State.IN_PROGRESS
+    (repo / "stop").write_text("", encoding="utf-8")
+
+
+def test_depends_must_exist_and_not_form_a_cycle(engine):
+    engine.create("a")
+    engine.create("b", depends=["I1"])
+    engine.create("c", depends=["I2"])
+    with pytest.raises(KeyError):
+        engine.depend("I1", add=["I9"])
+    with pytest.raises(TransitionError, match="does not depend on I3"):
+        engine.depend("I1", remove=["I3"])
+    with pytest.raises(TransitionError, match="cycle: I1 -> I3 -> I2 -> I1"):
+        engine.depend("I1", add=["I3"])
+    with pytest.raises(TransitionError, match="cycle: I1 -> I1"):
+        engine.depend("I1", add=["I1"])
+    assert engine.tasks.get("I1").depends == []
 
 
 def test_token_usage_and_agent_settings(engine, repo):

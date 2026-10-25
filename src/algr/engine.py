@@ -200,6 +200,34 @@ class Engine:
         self.emit("task.done", task, pr=task.pr, merged_by="human")
         return self.tasks.get(task_id)
 
+    def depend(self, task_id: str, *, add: list[str] | None = None, remove: list[str] | None = None) -> Task:
+        """人が依存先を足す・外す。依存先は実在し、依存をたどって自分に戻らないこと。配車は次の tick から新しい依存で判定する。"""
+        task = self.tasks.get(task_id)
+        for dep in add or []:
+            self.tasks.get(dep)  # 無いタスクには依存できない
+        if unknown := sorted(set(remove or []) - set(task.depends)):
+            raise flow.TransitionError(f"{task_id} does not depend on {' '.join(unknown)}")
+        depends = [d for d in task.depends if d not in (remove or [])]
+        depends += [d for d in dict.fromkeys(add or []) if d not in depends]
+        if cycle := self._cycle(task_id, depends):
+            raise flow.TransitionError(f"depends would form a cycle: {' -> '.join(cycle)}")
+        task.depends = depends
+        self.tasks.save(task)
+        return self.tasks.get(task_id)
+
+    def _cycle(self, task_id: str, depends: list[str]) -> list[str]:
+        """task_id が depends を持つとしたときに、依存をたどって task_id に戻る道。無ければ空。"""
+        graph = {t.id: t.depends for t in self.tasks.list()} | {task_id: depends}
+        stack, seen = [[task_id, dep] for dep in depends], set()
+        while stack:
+            path = stack.pop()
+            if path[-1] == task_id:
+                return path
+            if path[-1] not in seen:
+                seen.add(path[-1])
+                stack += [[*path, dep] for dep in graph.get(path[-1], [])]
+        return []
+
     def tick(self) -> list[Event]:
         """1 周分：トリガーのイベントを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する。"""
         start = len(self.events)

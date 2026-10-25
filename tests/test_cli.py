@@ -76,6 +76,17 @@ def test_reopen_and_merge(algr):
     assert algr("merge", "I1")[2] == {"error": "I1 is not approved and waiting for merge"}
 
 
+def test_depends(algr):
+    algr("new", "a")
+    algr("new", "b")
+    _, task, _ = algr("depends", "I2", "--add", "I1")
+    assert task["depends"] == ["I1"]
+    assert algr("depends", "I1", "--add", "I2")[2] == {"error": "depends would form a cycle: I1 -> I2 -> I1"}
+    assert algr("depends", "I2", "--add", "I9")[2] == {"error": "no such task: I9"}
+    _, task, _ = algr("depends", "I2", "--remove", "I1")
+    assert task["depends"] == []
+
+
 def test_stats(algr):
     algr("new", "plain")
     algr("new", "asks", "-q", "auth: How?")

@@ -28,6 +28,7 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr new "Add login" --question "auth: How do users sign in?"
   algr list --state needs-decision
   algr answer I1 I1-1="OAuth"
+  algr depends I2 --add I1 --remove I3              # change the tasks I2 waits for
   algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
   algr merge I1                                     # merge an approved task (flow.merge = "human")
   algr tick                                         # take in triggers, collect job results, start jobs
@@ -132,6 +133,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("answers", nargs="+", type=_answer, metavar="QUESTION_ID=ANSWER")
 
+    p = sub.add_parser("depends", help="add or remove tasks this task waits for")
+    p.add_argument("task_id")
+    p.add_argument("--add", action="append", default=[], metavar="TASK_ID", help="wait until this task is done")
+    p.add_argument("--remove", action="append", default=[], metavar="TASK_ID", help="stop waiting for this task")
+
     p = sub.add_parser("reopen", help="send a failed task back to intake")
     p.add_argument("task_id")
     p.add_argument("--note", default="")
@@ -187,6 +193,8 @@ def run(args: argparse.Namespace) -> Any:
         return engine.tasks.get(args.task_id)
     if args.command == "answer":
         return engine.resolve(args.task_id, dict(args.answers))
+    if args.command == "depends":
+        return engine.depend(args.task_id, add=args.add, remove=args.remove)
     if args.command == "reopen":
         return engine.reopen(args.task_id, args.note)
     if args.command == "merge":
