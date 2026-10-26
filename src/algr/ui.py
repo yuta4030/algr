@@ -6,6 +6,7 @@ GUI は判断も状態も持たない。読むのはアダプタの IF とエン
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
@@ -16,11 +17,13 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-from algr import flow, stats
+from algr import diagrams, flow, stats
+from algr.agents import ROLE_HELP
 from algr.engine import Engine
-from algr.model import State, Task
+from algr.model import Role, State, Task
 
 PAGE = Path(__file__).with_name("ui.html")
+PROMPTS = Path(__file__).with_name("prompts")
 
 # 主経路。needs-decision と failed は、主経路のどこで止まっているかで見せる
 STAGES = (State.INTAKE, State.READY, State.IN_PROGRESS, State.REVIEW, State.DONE)
@@ -235,6 +238,34 @@ def history(engine: Engine) -> dict[str, Any]:
     }
 
 
+def help_page() -> dict[str, Any]:
+    """ヘルプのリファレンス。状態・遷移・不変条件・役・プロンプト・コマンドをコードから組み立てる。
+
+    図は diagrams.py のデータから書き出す。大きく変わらない説明（コンセプト、人の立場、ID）は ui.html にベタ書きしている。
+    """
+    from algr.cli import STANCES, commands  # cli が ui を読むので、ここで読む
+
+    return {
+        "stances": [{"name": name, "commands": list(names)} for name, names in STANCES.items()],
+        "states": [{"state": str(s), "help": flow.STATE_HELP[s]} for s in State],
+        "events": [
+            {
+                "name": name,
+                "from": sorted(str(s) for s in sources),
+                "to": str(target),
+                "data": list(flow.EVENT_DATA[name]),
+                "help": flow.EVENT_HELP[name],
+                "invariants": [inspect.getdoc(f) for f in flow.INVARIANTS.get(name, ())],
+            }
+            for name, (sources, target) in flow.TRANSITIONS.items()
+        ],
+        "roles": [{"role": str(r), **ROLE_HELP[r], "prompt": (PROMPTS / f"{r}.md").read_text(encoding="utf-8")} for r in Role],
+        "common_prompt": (PROMPTS / "common.md").read_text(encoding="utf-8"),
+        "diagrams": diagrams.svgs(),
+        "commands": commands(),
+    }
+
+
 class _Handler(BaseHTTPRequestHandler):
     engine: Engine
     hosts: set[str]
@@ -256,9 +287,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain")
         elif self.path == "/":
             self._send(HTTPStatus.OK, PAGE.read_bytes(), "text/html; charset=utf-8")
-        elif self.path in ("/api/snapshot", "/api/history"):
-            build = snapshot if self.path == "/api/snapshot" else history
-            body = json.dumps(build(self.engine), ensure_ascii=False).encode("utf-8")
+        elif self.path in ("/api/snapshot", "/api/history", "/api/help"):
+            build = {"/api/snapshot": snapshot, "/api/history": history}.get(self.path)
+            body = json.dumps(build(self.engine) if build else help_page(), ensure_ascii=False).encode("utf-8")
             self._send(HTTPStatus.OK, body, "application/json; charset=utf-8")
         else:
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")

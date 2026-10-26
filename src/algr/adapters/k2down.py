@@ -11,9 +11,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+from typing import Any
 
-from algr.adapters import AdapterError, Context, Rule
+from algr.adapters import REPORT_KEYS, AdapterError, Context, Rule
+
+# 提案（propose / proposals / accept / decline）と report --json の形を使う
+MIN_VERSION = (0, 3, 0)
 
 
 class K2downError(AdapterError):
@@ -22,6 +27,11 @@ class K2downError(AdapterError):
 
 def _one_line(text: str) -> str:
     return " ".join(text.split())
+
+
+def _decision(source: str) -> list[str]:
+    """提案の元になった決断 ID。report の候補から出した提案には無い。"""
+    return ["--decision", source] if source else []
 
 
 class K2down:
@@ -33,9 +43,24 @@ class K2down:
     ) -> None:
         self.dir = ctx.path(dir)
         self.command = list(command) if command else ["k2down"]
+        self._checked = False
+
+    def _check_version(self) -> None:
+        """最初に k2down を呼ぶときに 1 度だけ、MIN_VERSION 以降かを確かめる。"""
+        if self._checked:
+            return
+        out = self._call([*self.command, "--version"], "--version")
+        found = tuple(int(n) for n in re.findall(r"\d+", out.split()[-1])[:3]) if out else ()
+        if found < MIN_VERSION:
+            need = ".".join(map(str, MIN_VERSION))
+            raise K2downError(f"k2down {need} or later is required (found {out or 'unknown'}): uv tool install --force git+https://github.com/yuta4030/k2down")
+        self._checked = True
 
     def _run(self, *args: str) -> str:
-        argv = [*self.command, "--dir", str(self.dir), *args]
+        self._check_version()
+        return self._call([*self.command, "--dir", str(self.dir), *args], args[0])
+
+    def _call(self, argv: list[str], name: str) -> str:
         # Windows では Python の標準出力が既定で cp932 になるので、k2down に UTF-8 で出させる
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         try:
@@ -43,7 +68,7 @@ class K2down:
         except FileNotFoundError as e:
             raise K2downError(f"k2down is not installed ({self.command[0]}): uv tool install git+https://github.com/yuta4030/k2down") from e
         if proc.returncode != 0:
-            raise K2downError(f"{' '.join(args[:1])}: {proc.stderr.strip() or proc.stdout.strip()}")
+            raise K2downError(f"{name}: {proc.stderr.strip() or proc.stdout.strip()}")
         return proc.stdout.strip()
 
     def rules(self) -> list[Rule]:
@@ -69,14 +94,21 @@ class K2down:
             args += ["--predicted", _one_line(predicted)]
         self._run(*args)
 
+    def report(self) -> dict[str, Any]:
+        if not (self.dir / "rules.json").exists():
+            return {}
+        data = json.loads(self._run("report", "--json"))
+        rules = [{k: r[k] for k in ("id", "applied", "hit", "miss", "rejected", "decisions")} for r in data.get("rules", [])]
+        return {**{k: data.get(k, []) for k in REPORT_KEYS}, "rules": rules}
+
     # --- 提案（k2down の propose / proposals / accept / decline） ---------------
 
     def propose(self, rule: str, source: str) -> str:
-        return json.loads(self._run("propose", "add", _one_line(rule), "--decision", source, "--json"))["id"]
+        return json.loads(self._run("propose", "add", _one_line(rule), *_decision(source), "--json"))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
         # k2down の外す提案には理由の項目が無いので、ID で表せない出どころ（--source）に理由を入れる
-        args = ["propose", "retire", rule_id, "--decision", source, "--source", _one_line(reason), "--json"]
+        args = ["propose", "retire", rule_id, *_decision(source), "--source", _one_line(reason), "--json"]
         return json.loads(self._run(*args))["id"]
 
     def proposals(self) -> list[dict[str, str]]:
@@ -84,6 +116,7 @@ class K2down:
             return []
         out = []
         for p in json.loads(self._run("proposals", "--json"))["proposals"]:
+            p.setdefault("decision", "")
             if p["kind"] == "retire":
                 p["reason"] = p.pop("source", "")
             out.append(p)

@@ -117,6 +117,43 @@ nav a { color: var(--mute); text-decoration: none; font-size: 12px; padding: 3px
 nav a.on { background: var(--panel); color: var(--ink); font-weight: 600; }
 .view[hidden] { display: none; }
 main.page { display: block; }
+
+/* ヘルプ：文章はコードから組み立てる（/api/help） */
+.help p { margin: 0 0 8px; }
+.help a { color: var(--agent); }
+.htable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.htable th { text-align: left; font-size: 11px; font-weight: 600; color: var(--mute); padding: 0 8px 6px 0; }
+.htable td { border-top: 1px solid var(--line); padding: 7px 8px 7px 0; vertical-align: top; }
+.htable td:first-child { white-space: nowrap; }
+.htable code, .help code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg); border-radius: 4px; padding: 0 4px; }
+.help ul { margin: 4px 0 0; padding-left: 18px; color: var(--mute); font-size: 12px; }
+.help details summary { cursor: pointer; font-size: 12px; color: var(--mute); }
+.help .prose { max-width: 760px; }
+@media (max-width: 600px) { .htable td:first-child { white-space: normal; } .htable code { word-break: break-all; } }
+.help .stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 340px); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .help .stage { grid-template-columns: 1fr; } }
+/* 図（diagrams.py が書き出す SVG）。人はオレンジ、AI は青、データは灰色の円柱。色はページのトークンから取る */
+.dg { width: 100%; height: auto; display: block; }
+.dg text { font-size: 13px; fill: var(--ink); }
+.dg .title { font-size: 15px; font-weight: 600; }
+.dg .b { font-weight: 600; } .dg .s { font-size: 11.5px; }
+.dg .q { font-size: 11.5px; fill: var(--mute); }
+.dg .state, .dg .plain { fill: var(--panel); stroke: var(--mute); stroke-width: 1.25; }
+.dg .plain { stroke-dasharray: 3 3; }
+.dg .human { fill: color-mix(in srgb, var(--human) 14%, var(--panel)); stroke: var(--human); stroke-width: 2; }
+.dg .agent { fill: color-mix(in srgb, var(--agent) 10%, var(--panel)); stroke: var(--agent); stroke-width: 1.5; }
+.dg .data { fill: var(--track); stroke: var(--mute); stroke-width: 1.25; }
+.dg .rim { fill: none; stroke: var(--mute); stroke-width: 1.25; }
+.dg .tag.human { fill: var(--human); stroke: none; } .dg .tag.agent { fill: var(--agent); stroke: none; }
+.dg .bar.human { fill: var(--human); } .dg .bar.agent { fill: var(--agent); }
+.dg .tagt { font-size: 10px; font-weight: 700; fill: var(--panel); }
+.dg .band { fill: color-mix(in srgb, var(--track) 35%, transparent); stroke: var(--line); stroke-width: 1.25; }
+.dg .ln { fill: none; stroke: var(--mute); stroke-width: 1.25; }
+.dg .ln.write { stroke-width: 1; stroke-dasharray: 4 3; }
+.dg .ln.read { stroke: var(--agent); stroke-dasharray: 5 3; }
+.dg .mk { fill: var(--mute); } .dg .mk.read { fill: var(--agent); }
+.dg .dot { fill: var(--agent); }
+.help pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border-radius: 6px; padding: 10px; margin: 6px 0 0; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .grid2 > section { margin-bottom: 0; }
 #tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); display: none; white-space: nowrap; }
@@ -188,7 +225,7 @@ main.page { display: block; }
 <body>
 <header>
   <h1>algr</h1>
-  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a></nav>
+  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a><a href="#help">ヘルプ</a></nav>
   <div class="counts" id="counts"></div>
   <div class="updated mute"><span class="live" id="live"></span><span id="updated"></span></div>
 </header>
@@ -215,6 +252,42 @@ main.page { display: block; }
 </main>
 <main class="view page" id="view-flow" hidden><section class="flow"><h2>遷移の回数と滞在時間（中央値）</h2><div id="flow"></div></section></main>
 <main class="view page" id="view-jobs" hidden><section><div class="filters"><div class="seg" id="j-range"></div><div class="legend" id="j-legend" style="margin:0"></div></div><div id="jobs"></div></section></main>
+<main class="view page help" id="view-help" hidden>
+  <section class="prose"><h2>algr とは</h2>
+    <p>algr は Algorithmic Development を回すためのフロー。人はルール（戦略）を書き、タスクはルールで判断を埋めたうえで、人の手に触れずにマージまで流れる。人は例外だけを受ける。</p>
+    <p>algr 本体が持つのは、状態遷移とイベント、遷移ごとの不変条件、エージェントのプロンプトだけ。タスク管理・エージェントを動かす場所・判断の保存はアダプタの向こうに置き（いまはファイル、ローカルのプロセス、k2down）、判断はエージェントがする。本体は結果で状態を動かし、記録するだけ。</p>
+    <p class="mute">なぜこうしているか（コンセプト・戦略・戦術）は<a href="https://claude.ai/artifact/JpCoJPm1kdmhNiFFtZShYG" target="_blank" rel="noopener">企画書</a>にある。</p></section>
+  <section><h2>2 つの層</h2><div class="stage"><div data-diagram="layers"></div>
+    <div class="prose"><p>列が誰（人・AI・データ）、行がどの層かを表す。データ（判断・ルール・提案）は両方の層で共有する。</p>
+    <p>処理の層では、起票・実装・レビューのエージェントがルールを読んでタスクを流し、判断を書く。ルールで決まらない判断だけがクライアントに上がる。</p>
+    <p>メタの層では、蒸留エージェントが人の答えと report（判断の集計）から提案を出し、メタプログラマーが accept したものだけがルールになる。使うほど人に上がる判断が減っていく。</p></div></div></section>
+  <section class="prose"><h2>人の立場</h2>
+    <p>人は処理の中から抜け、外側で 2 つの立場に立つ。人に聞く判断は、文脈を一番持っている起票に寄せる。</p>
+    <table class="htable"><tr><th>立場</th><th>やること</th><th>答える判断</th></tr>
+      <tr><td>クライアント</td><td>何をやるか、目的、こだわり度を出す</td><td>「何を大事にするか」が問われるもの</td></tr>
+      <tr><td>メタプログラマー</td><td>何を自動で通してよいかを決める。ルールの受け入れ、マージのゲート、公開 IF の境界を持つ</td><td>「どこまで任せてよいか」が問われるもの</td></tr></table>
+    <p class="mute">それぞれの操作は下の「人の操作」にある。</p></section>
+  <section><h2>状態とイベント</h2><div class="stage"><div data-diagram="flow"></div>
+    <div class="prose"><p>主経路は <code>intake</code> → <code>ready</code> → <code>in-progress</code> → <code>review</code> → <code>done</code>。</p>
+    <p>人が関わるのは <code>needs-decision</code> と <code>failed</code>、それにマージのゲート（<code>flow.merge = "human"</code>）を置いたときの <code>approved</code> だけ。</p>
+    <p>人が答えると必ず <code>intake</code> に戻り、起票エージェントがルールを当て直してから主経路に合流する。</p>
+    <p>イベントは遷移ごとに 1 つ出て、そこに hook を差し込める。hook は既定の処理のあとに呼ばれる観察者で、遷移を止めない。遷移ごとの実績は<a href="#flow">フロー</a>で見られる。</p></div></div></section>
+  <section><h2>ルールを育てる（メタプログラミング）</h2><div class="stage"><div data-diagram="meta"></div>
+    <div class="prose"><p>メタプログラマーは処理の中には入らず、ルールとゲートを通して何を自動で通すかを決める。</p>
+    <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から足す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
+    <p><b>見直しも提案で届く。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。蒸留エージェントは <code>k2down report</code> の落とす候補（一度も当たらない）、書き直す候補（外れや異議が多い）、ぶつかる組から、外す提案と言い直しの提案も出す。メタプログラマーは report を読み込まなくても、提案を決めればよい。</p>
+    <p><b>ゲートを持つ。</b>マージのゲート（<code>approved</code>）、失敗からのやり直し（<code>algr reopen</code>）、公開 IF の境界もメタプログラマーの持ち物。</p>
+    <p class="mute">ルールの変更は rules.json の差分として PR に載る。そのマージを人の確認とする。</p></div></div></section>
+  <section class="prose"><h2>ID</h2><table class="htable"><tr><th>対象</th><th>形</th><th>振るところ</th></tr>
+    <tr><td>タスク</td><td><code>I12</code></td><td>タスクのアダプタ</td></tr>
+    <tr><td>未決事項・判断（決断 ID）</td><td><code>I12-3</code></td><td>タスクの中の通し番号。k2down の <code>--decision</code> にそのまま渡す</td></tr>
+    <tr><td>ジョブ</td><td><code>I12.implement.2</code></td><td>タスク・役・タスクの中で起動した回数</td></tr>
+    <tr><td>ルール</td><td><code>R-k7m2q</code></td><td>k2down。使い終わった ID は使い回さない</td></tr>
+    <tr><td>ルールの提案</td><td><code>P-a2m4n</code></td><td>k2down</td></tr></table>
+    <p class="mute">ID の種類は記録の項目ごとに分け、混ぜない（ルールは <code>rule_ids</code>、未決事項は <code>question_ids</code>、提案のもとの判断は <code>decision</code>）。</p></section>
+  <h2 class="mute" style="font-size:12px;letter-spacing:.06em;margin:28px 0 10px">リファレンス（コードから組み立てている）</h2>
+  <div id="help"></div>
+</main>
 <div id="tip"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
@@ -473,7 +546,7 @@ function renderRules() {
     <span class="use" data-tip="${esc(x.uses.map((u) => u.id).join(" ") || "未使用")}">${x.uses.length ? `<i class="bar" style="width:${(x.uses.length / max) * 80}px"></i>${x.uses.length}` : "未使用"}</span></div>`).join("") || `<div class="empty">–</div>`;
   $("r-pn").textContent = r.proposals.length;
   $("r-props").innerHTML = r.proposals.map((p) => `<div class="prop"><b>${esc(proposalText(p))}</b>
-    <div class="src">${p.question ? `${esc(p.decision)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.decision)}</div>
+    <div class="src">${p.question ? `${esc(p.decision)} ${esc(p.question.text)} → ${esc(p.question.answer)}` : esc(p.decision || "report の候補から")}</div>
     <button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button> <button class="btn" disabled title="CLI: algr decline ${p.id}">却下</button></div>`).join("") || `<div class="clear"><span class="mark">✓</span>なし</div>`;
   const cmax = Math.max(1, ...r.candidates.map((c) => c.human + c.agent));
   $("r-cands").innerHTML = `<div class="legend"><span><i style="background:var(--human)"></i>人が答えた</span><span><i style="background:var(--bad)"></i>根拠なし</span></div>` +
@@ -540,7 +613,35 @@ function renderJobs() {
       <span class="age busy">${dur(r.busy)}</span></div>`).join("") || `<div class="empty">この期間のジョブはありません</div>`);
 }
 
+// `code` だけを <code> にする。ほかはエスケープする
+const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+let help = null;
+function renderHelp() {
+  const h = help, by = (s) => h.commands.filter((c) => c.stance === s);
+  const cmds = (list) => list.map((c) => `<tr><td><code>algr ${esc(c.name)}</code></td><td>${esc(c.help)}</td></tr>`).join("");
+  $("help").innerHTML = `
+  <section><h2>人の操作</h2><table class="htable">
+    ${h.stances.map((s) => `<tr><th colspan="2">${esc(s.name)}</th></tr>${cmds(by(s.name))}`).join("")}
+    <tr><th colspan="2">見る・回す</th></tr>${cmds(by(""))}</table></section>
+  <section><h2>状態</h2><table class="htable">${h.states.map((s) => `<tr><td><code>${esc(s.state)}</code></td><td>${esc(s.help)}</td></tr>`).join("")}</table></section>
+  <section><h2>イベントと遷移</h2><table class="htable"><tr><th>イベント</th><th>遷移</th><th>既定の処理</th></tr>
+    ${h.events.map((e) => `<tr><td><code>${esc(e.name)}</code></td>
+      <td>${e.from.length ? e.from.map(esc).join(" / ") : "（新規）"} → ${esc(e.to)}${e.data.length ? `<div class="mute">${e.data.map((d) => `<code>${esc(d)}</code>`).join(" ")}</div>` : ""}</td>
+      <td>${inline(e.help)}${e.invariants.length ? `<ul>${e.invariants.map((i) => `<li>${inline(i)}</li>`).join("")}</ul>` : ""}</td></tr>`).join("")}</table></section>
+  <section><h2>エージェントの役</h2><table class="htable"><tr><th>役</th><th>起動する時</th><th>結果</th></tr>
+    ${h.roles.map((r) => `<tr><td><code>${esc(r.role)}</code> ${esc(r.name)}</td><td>${inline(r.when)}</td>
+      <td>${inline(r.result)}<details><summary>プロンプト</summary><pre>${esc(r.prompt)}</pre></details></td></tr>`).join("")}</table>
+    <details><summary>共通のプロンプト（守ること・安全網・結果の返し方）</summary><pre>${esc(h.common_prompt)}</pre></details>
+    <p class="mute">利用側の追記は <code>.algr/prompts/common.md</code> と <code>.algr/prompts/&lt;役&gt;.md</code> に置く。</p></section>`;
+}
+async function loadHelp() {
+  if (!help) { try { help = await (await fetch("/api/help", { cache: "no-store" })).json(); } catch { return; } }
+  document.querySelectorAll("[data-diagram]").forEach((el) => (el.innerHTML = help.diagrams[el.dataset.diagram] || ""));
+  renderHelp();
+}
+
 function renderView() {
+  if (view === "help") return loadHelp();
   if (view === "now" || !hist) return;
   ({ trend: renderTrend, rules: renderRules, flow: renderFlow, jobs: renderJobs })[view]();
 }
@@ -549,7 +650,7 @@ document.addEventListener("click", (ev) => {
   if (b) { range = b.dataset.range; renderJobs(); }
 });
 async function loadHistory() {
-  if (view === "now") return;
+  if (view === "now" || view === "help") return;
   try { hist = await (await fetch("/api/history", { cache: "no-store" })).json(); renderView(); } catch { $("live").style.background = "var(--bad)"; }
 }
 function route() {

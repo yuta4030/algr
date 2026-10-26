@@ -1,6 +1,6 @@
 [project]
 name = "algr"
-version = "0.0.1"
+version = "0.1.0"
 description = "A flow for Algorithmic Development: rules decide, tasks flow straight through to merge."
 readme = "README.md"
 license = "MIT"

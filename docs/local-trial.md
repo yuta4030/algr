@@ -2,7 +2,7 @@
 
 本物の Claude Code と k2down で、砂場のリポジトリに 2 件のタスクを流す。見たいのは次の 3 つ。
 
-1. 起票 → 人の回答 → 蒸留 → 実装 → レビュー → マージが一周する
+1. 起票 → 人の回答 → 実装 → レビュー → マージ → 蒸留が一周する
 2. 人の答えがルールになり、2 件目の同じ論点は人に聞かずにルールで埋まる（Touchless）
 3. `algr stats` と記録（`events.jsonl`、ジョブのログ）で、何が起きたかを後から追える
 
@@ -11,12 +11,12 @@ PR の代わりにローカルのブランチを使い、マージは人が行�
 ## 0. 用意するもの
 
 ```sh
-uv tool install git+https://github.com/yuta4030/algr@claude/great-goodall-fiikna   # algr と algr-agent
+uv tool install git+https://github.com/yuta4030/algr                              # algr と algr-agent
 uv tool install git+https://github.com/yuta4030/k2down
 claude --version                                                                  # ログイン済みであること
 ```
 
-API を使うので費用がかかる。役ごとの上限は下の設定の `max_budget_usd` で決める。
+API キーで動かすなら費用がかかる（サブスクの OAuth でログインしていれば要らない）。役ごとの上限は下の設定の `max_budget_usd` で決める。
 
 ## 1. 砂場のリポジトリを作る
 
@@ -56,7 +56,7 @@ command = ["algr-agent"]
 max_parallel = 1        # 起票・レビューも同じ作業ツリーで動くので 1 つずつ
 
 [adapters.decisions]
-use = "k2down"          # .algr/decisions/ に rules.json と usage.jsonl ができる
+use = "k2down"          # .algr/decisions/ に rules.json・proposals.json・usage.jsonl ができる
 
 [agents.default]
 max_budget_usd = 1
@@ -113,17 +113,18 @@ algr show I1                                     # 起票エージェントが�
 algr answer I1 I1-1="TypeError を投げる"          # 残りの未決事項も同じように答える
 ```
 
-答えると起票に戻り、蒸留・実装・レビューが流れる。レビューが通ると `[review, approved]` で止まる。
+答えると起票に戻り、実装・レビューが流れる。レビューが通ると `[review, approved]` で止まる。
 
 ```sh
+git log --oneline main..algr/I1 && git diff main...algr/I1
+git merge algr/I1
+algr merge I1                                    # done にし、ルールに従った判断を hit として記録する。蒸留エージェントが走る
+algr run                                         # 蒸留が終わるまで回す
+
 algr proposals                                   # 蒸留エージェントのルール提案
 algr accept P-a2m4n                              # 提案をルールにする（k2down accept）
 k2down --dir .algr/decisions list
 git add .algr/decisions && git commit -m "rule: P-a2m4n"   # ルールの PR のマージにあたる
-
-git log --oneline main..algr/I1 && git diff main...algr/I1
-git merge algr/I1
-algr merge I1                                    # done にし、ルールに従った判断を hit として記録する
 ```
 
 ## 4. 2 件目：同じ論点がルールで埋まる

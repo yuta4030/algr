@@ -226,7 +226,8 @@ class RuleFile:
     """1 行ルールと判断の記録をファイルで持つ。k2down の代わりに使うフェイクの判断ストア。
 
     rules.json に {"issued", "rules": [{"id", "text"}], "proposals": [判断ストアの IF の proposals() と同じ形]}、
-    usage.jsonl に apply / reject / escalate / decide / propose / retire の記録を追記する。
+    usage.jsonl に apply / reject / escalate / decide / propose / retire / decline の記録を追記する。
+    report() は k2down report の一部を、ここの記録から数えて返す。
     """
 
     def __init__(self, ctx: Context, dir: str = ".algr/decisions") -> None:
@@ -308,10 +309,31 @@ class RuleFile:
 
     def reject_proposal(self, proposal_id: str) -> None:
         data = self._load()
-        if not any(p["id"] == proposal_id for p in data["proposals"]):
+        proposal = next((p for p in data["proposals"] if p["id"] == proposal_id), None)
+        if proposal is None:
             raise KeyError(f"no such proposal: {proposal_id}")
-        data["proposals"] = [p for p in data["proposals"] if p["id"] != proposal_id]
+        data["proposals"].remove(proposal)
         _write_json(self.dir / "rules.json", data)
+        self._log("declined", proposal=proposal_id, content=proposal)
+
+    def report(self, min_decisions: int = 10) -> dict[str, Any]:
+        usage = self.usage()
+        decided = {u["decision"]: u["outcome"] for u in usage if u["event"] == "decided"}
+        counts = {r.id: {"id": r.id, "applied": 0, "hit": 0, "miss": 0, "rejected": 0, "decisions": len(decided)} for r in self.rules()}
+        for u in usage:
+            for rule_id in u.get("rule_ids", []):
+                if rule_id in counts and u["event"] in ("applied", "rejected"):
+                    counts[rule_id][u["event"]] += 1
+                    if u["event"] == "applied" and decided.get(u["decision"]) in ("hit", "miss"):
+                        counts[rule_id][decided[u["decision"]]] += 1
+        rows = list(counts.values())
+        return {
+            "rules": rows,
+            "drop_candidates": [r["id"] for r in rows if r["applied"] == 0 and r["decisions"] >= min_decisions],
+            "rewrite_candidates": [r["id"] for r in sorted(rows, key=lambda r: -(r["miss"] + r["rejected"])) if r["miss"] + r["rejected"]],
+            "conflict_candidates": [],
+            "declined_proposals": [u["content"] | {"proposal": u["proposal"]} for u in usage if u["event"] == "declined"],
+        }
 
 
 class StubNotifier:

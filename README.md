@@ -6,7 +6,7 @@ algr（/ˈælɡər/、アルガー）は、Algorithmic Development という働�
 - **メタの層（アルゴリズミック）**：人とAIが、処理を動かすルールとフローそのものを書き換える
 - **処理の層（STP）**：起票 → 実装 → レビュー → マージを、ルールに従って流す
 
-いまはフェーズ0（境界を引く）です。algr 本体とフェイクアダプタだけで、ループが一周します。
+いまはフェーズ1です。Claude Code（`algr-agent`）と k2down で実タスクを流し、algr 自身も algr で開発しています（[docs/dogfooding.md](docs/dogfooding.md)）。
 
 ## 人の役割
 
@@ -15,7 +15,7 @@ algr（/ˈælɡər/、アルガー）は、Algorithmic Development という働�
 | 立場 | やること | 答える判断 | 操作 |
 |---|---|---|---|
 | クライアント | 何をやるか、目的、こだわり度を伝える | 「何を大事にするか」が問われるもの | `algr new`、`algr answer`、`algr depends` |
-| メタプログラマー | 何を自動で通してよいかを決める。ルールを見直し、他チームとの境界（公開する IF や API の契約）を守る | 「どこまで任せてよいか」が問われるもの | `algr accept` / `decline`、`algr merge`、`algr reopen` |
+| メタプログラマー | 何を自動で通してよいかを決める。ルールを見直し、他チームとの境界（公開する IF や API の契約）を守る | 「どこまで任せてよいか」が問われるもの | `algr distill`、`algr accept` / `decline`、`algr merge`、`algr reopen` |
 
 ルールで決まらない判断は、文脈を一番持っている起票の瞬間に寄せます。人が答えた判断は蒸留エージェントがルールにし、
 メタプログラマーが受け入れたものだけがルールになります。使うほど人に上がる判断は減り、起票でも人が答えない状態（Touchless）に近づきます。
@@ -62,7 +62,10 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 `algr ui` は現状を見るページを `http://127.0.0.1:8765/` で開きます（`--port` で変えられます）。あなたの番（回答・やり直し・マージ）、
 タスクごとの進み具合といま誰の手にあるか、最近のイベント、指標、ルールと提案を 3 秒ごとに読み直して出します。
 サブページは、推移（起票した週ごとの差し戻し率・介入回数・STP 率など）、ルール（使われた回数、提案、まだルールでない判断）、
-フロー（遷移ごとの通過回数と状態ごとの滞在時間）、ジョブ（タスクごとのジョブの時間とトークン数）の 4 つです。
+フロー（遷移ごとの通過回数と状態ごとの滞在時間）、ジョブ（タスクごとのジョブの時間とトークン数）、ヘルプの 5 つです。
+ヘルプは algr 自身の説明です。大きく変わらないもの（コンセプト、人の立場、ID）は `ui.html` に書き、状態・遷移・不変条件・役ごとの結果の形・プロンプト・コマンドのリファレンスはコードから組み立てます（`ui.help_page`）。
+図（全体のマトリクス、状態とイベント、ルールを育てる輪）は `src/algr/diagrams.py` に箱と矢印のデータで持ち、SVG に書き出します。人・AI・データで形と色を分けています。状態とイベントの図はテストで `TRANSITIONS` と突き合わせます。
+説明の文はコードの横（`flow.STATE_HELP` / `EVENT_HELP`、`agents.ROLE_HELP`、`cli.STANCES`）に 1 か所だけ置き、このファイルの表はテスト（`tests/test_help.py`）でそれと突き合わせます。
 読むのはアダプタの IF とイベントログだけで、GUI は判断も状態も持ちません。いまは閲覧だけで、操作のボタンには同じことをする CLI を添えています。
 
 `algr tick` は 1 周だけ回します（トリガーを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する）。
@@ -82,7 +85,7 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 失敗       intake / in-progress / review / approved ─▶ failed ─▶ intake（人が reopen する）
 ```
 
-人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の承認済みの review だけです。
+人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の approved だけです。
 人が答えると必ず起票に戻り、そこから主経路に合流します。人に聞くときは必ず通知します。
 failed になった理由（`role` と `message`）はタスクの `failure` に残り、`algr show` で読めます。reopen すると消えます。
 エージェントが落ちたときの `message` には、エージェントの出力（`algr.agent` なら claude の `result` や `is_error`）の最後の方が入ります。
@@ -94,7 +97,7 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 |---|---|---|
 | `task.created` | `source`（`human` / `auto`） | 起票エージェントを起動する |
 | `decision.requested` | `channel`（`inline` / `queue`）、`questions` | 人に知らせる（channel は聞き方の違いだけ） |
-| `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントと蒸留エージェントを起動する |
+| `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントを起動する |
 | `task.ready` | — | 配車を待つ |
 | `task.started` | — | 実装エージェントを起動する |
 | `task.returned` | `questions` | 起票エージェントを起動する（ルールで埋まらなければ人に聞く） |
@@ -102,7 +105,7 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 | `review.changes_requested` | `changes`（修正依頼） | 実装エージェントを起動する（前の PR と指摘を渡す） |
 | `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
 | `review.approved` | `pr` | マージのゲート（`flow.merge = "human"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る） |
-| `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録する |
+| `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録し、人が答えた未決事項があれば蒸留エージェントを起動する |
 | `task.failed` | `role`、`message` | 人に上げる |
 | `task.reopened` | `note` | 起票エージェントを起動する |
 
@@ -121,6 +124,8 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 - hook が例外を投げてもフローは止めません。`.algr/state/events.jsonl` に `hook_error` を残し、通知アダプタで人に知らせます
 - 知らないイベント名の hook は、設定の読み込みでエラーにします
 - イベントは再送されることがあるので、hook もアダプタと同じく冪等に書きます
+
+### 不変条件とタスクの持ち物
 
 遷移ごとに不変条件があります（例：ready にするには未決事項がゼロ、ルールで埋めた未決事項にはルールの ID が付いている）。
 
@@ -146,27 +151,31 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 |---|---|---|
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
-| `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
-| `distill` | 人が答えた未決事項がある時（`algr distill` の方針を含む） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
+| `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
+| `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
 別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
 
 `objections` は判断への異議で、人に回します。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
 ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
-レビューには人が決めた未決事項の ID（`settled`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
+レビューには人が決めた未決事項の ID（`settled`）、蒸留には判断ストアの手入れの候補（`report`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
+
+蒸留は人の答えのほか、`report` の落とす候補（一度も当たらないルール）・書き直す候補（外れや異議の多いルール）・ぶつかる組から、
+外す提案と言い直し（新しいルールと外す提案の対）を出します。`report` から出した提案は、元になった決断 ID（`source`）を持ちません。
+判断ストアが `report()` を持たなければ、`report` は空です（k2down とフェイクは持っています）。
 
 結果の形が違えば、ジョブは失敗として扱います。形の定義は `src/algr/agents.py` にあります。
 
 ### Claude Code で動かす
 
-`python -m algr.agent` は、役のプロンプトとジョブを Claude Code（`claude -p --output-format json`）に渡し、
+`algr-agent`（`python -m algr.agent`）は、役のプロンプトとジョブを Claude Code（`claude -p --output-format json`）に渡し、
 答えの最後の ```json ブロックを結果として書き戻すコマンドです。使ったトークン数も結果に添えます。
 
 ```toml
 [adapters.executor]
 use = "fake.process"
-command = ["python", "-m", "algr.agent"]
+command = ["algr-agent"]                # python -m algr.agent と同じ
 max_parallel = 2
 
 [agents.default]
@@ -199,7 +208,7 @@ merge = "auto"                          # "human" でマージに人のゲート
 use = "fake.tasks"                      # 組み込み名
 [adapters.executor]
 use = "fake.process"
-command = ["claude", "-p", "..."]       # 省略するとフェイクのエージェント
+command = ["algr-agent"]                # Claude Code で動かす（python -m algr.agent と同じ）。省略するとフェイクのエージェント
 max_parallel = 2                        # ジョブを同時に走らせる数
 [adapters.notify]
 use = ".algr/adapters/slack.py:Slack"   # リポジトリに置いたアダプタ
@@ -235,7 +244,7 @@ model = "haiku"
 
 ### k2down
 
-判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。
+判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。algr は最初に k2down を呼ぶときに `k2down --version` で確かめ、古ければエラーにします。
 
 ```toml
 [adapters.decisions]
@@ -245,7 +254,7 @@ command = ["k2down"]                    # 省略時。uvx で動かすなら ["u
 ```
 
 蒸留エージェントの提案は `k2down propose` で k2down の proposals.json に積み、`algr accept` で `k2down accept`、`algr decline` で `k2down decline` を呼びます。
-受け入れも却下も k2down の usage.jsonl に残ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
+受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
 store を git で管理するなら、k2down のロック（`.k2down.lock`）を `.gitignore` に入れてください。
 rules.json の差分を PR にしてマージすることを、人の確認とします。
 

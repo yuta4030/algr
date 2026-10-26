@@ -3,16 +3,13 @@
 エージェント（ホスト側の AI）は実行アダプタがジョブとして起動し、数分から数十分かけて結果を返す。
 コアは判断の中身を見ない。結果の形を確かめ、それに従って状態を動かして記録するだけ。
 
-役ごとの結果（JSON）：
-- intake：   {"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}
-             fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
-- implement：{"pr": str, "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}
-             question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
-             想定外の判断が出たら、勝手に決めずに {"returned": {"text", "topic"?, "recommended"?}}
-- review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
-             objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
-- distill：  {"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}
-             rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く
+役ごとの起動する時と結果（JSON）の形は ROLE_HELP。
+- intake：   fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
+- implement：question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
+             想定外の判断が出たら、勝手に決めずに returned で返す
+- review：   objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
+- distill：  source は元になった決断 ID（report の候補から出した提案には無い）。rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く。
+             人の答えのほか、input.report（落とす候補・書き直す候補）からも外す提案と言い直し（新しいルールと外す提案の対）を出す
 
 intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
 depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
@@ -25,6 +22,31 @@ from typing import Any
 
 from algr.adapters import Rule
 from algr.model import Role, Task
+
+# 役ごとの起動する時（when）と結果の形（result）。README の表と algr ui のヘルプはここと突き合わせる（tests/test_help.py）
+ROLE_HELP: dict[Role, dict[str, str]] = {
+    Role.INTAKE: {
+        "name": "起票",
+        "when": "intake にいる間",
+        "result": '`{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}`',
+    },
+    Role.IMPLEMENT: {
+        "name": "実装",
+        "when": "in-progress にいる間",
+        "result": '`{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、'
+        '差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}`',
+    },
+    Role.REVIEW: {
+        "name": "レビュー",
+        "when": "review にいる間",
+        "result": '`{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}`',
+    },
+    Role.DISTILL: {
+        "name": "蒸留",
+        "when": "done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ）",
+        "result": '`{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}`',
+    },
+}
 
 
 class ResultError(Exception):
@@ -66,10 +88,13 @@ class DistillResult:
     retire: list[dict[str, str]] = field(default_factory=list)  # 外す提案。外すのは人の accept を通したときだけ
 
 
-def job_input(role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] | None = None) -> dict[str, Any]:
+def job_input(
+    role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] | None = None, report: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """ジョブに添える入力。エージェントは自分で判断ストアを引いてもよいが、ここに今のルールを渡しておく。
 
     agent は設定の [agents.<役>]（model、max_tokens など）。どう使うかは実行アダプタが決める。
+    report は判断ストアの手入れの候補（DecisionStore の report()）。蒸留にだけ渡す。
     """
     data: dict[str, Any] = {"rules": [{"id": r.id, "text": r.text} for r in rules], "agent": dict(agent or {})}
     if role == Role.IMPLEMENT:
@@ -81,6 +106,7 @@ def job_input(role: Role, task: Task, rules: list[Rule], agent: dict[str, Any] |
         data["settled"] = [q.id for q in task.questions if q.by == "human"]
     if role == Role.DISTILL:
         data["questions"] = [asdict(q) for q in task.questions if q.id in task.to_distill]
+        data["report"] = dict(report or {})
     return data
 
 
@@ -140,7 +166,9 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
             raise ResultError("changes must be a list of strings")
         return ReviewResult(bool(_need(data, "approved", bool)), {str(k): str(v) for k, v in objections.items()}, changes)
     if role == Role.DISTILL:
-        return DistillResult(
-            _texts(data.get("rules", []), "rule", "source"), _texts(data.get("retire", []), "rule_id", "reason", "source")
-        )
+        # source は元になった決断 ID。report の候補から出した提案には無いので、空にする
+        rules, retire = _texts(data.get("rules", []), "rule"), _texts(data.get("retire", []), "rule_id", "reason")
+        if not all(isinstance(i.get("source", ""), str) for i in [*rules, *retire]):
+            raise ResultError("expected source to be a decision ID")
+        return DistillResult([{**i, "source": i.get("source", "")} for i in rules], [{**i, "source": i.get("source", "")} for i in retire])
     raise ResultError(f"unknown role: {role}")

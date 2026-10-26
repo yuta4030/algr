@@ -18,7 +18,17 @@ from pathlib import Path
 from typing import Any
 
 from algr import flow
-from algr.adapters import Conflict, DecisionStore, ExecutorAdapter, Notifier, RunState, RunStatus, TaskAdapter, TriggerAdapter
+from algr.adapters import (
+    AdapterError,
+    Conflict,
+    DecisionStore,
+    ExecutorAdapter,
+    Notifier,
+    RunState,
+    RunStatus,
+    TaskAdapter,
+    TriggerAdapter,
+)
 from algr.agents import DistillResult, ImplementResult, IntakeResult, ResultError, ReviewResult, job_input, parse
 from algr.config import Config
 from algr.model import Event, Job, Question, Role, State, Task
@@ -327,9 +337,21 @@ class Engine:
 
     def _wanted(self, task: Task) -> list[Role]:
         roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE else []
-        if task.to_distill:
+        # 蒸留はタスクが done になってから 1 回にまとめる。途中で答えが変わっても最後の答えで蒸留し、マージされた答えだけをルールの候補にする
+        if task.to_distill and task.state == State.DONE:
             roles.append(Role.DISTILL)
         return roles
+
+    def _report(self) -> dict[str, Any]:
+        """判断ストアの手入れの候補。report() は任意のメソッドで、無いか失敗したら空で蒸留を走らせる。"""
+        report = getattr(self.decisions, "report", None)
+        if report is None:
+            return {}
+        try:
+            return report()
+        except AdapterError as e:
+            self._log({"report_error": str(e), "ts": _now()})
+            return {}
 
     def _start_jobs(self, task: Task) -> None:
         """いま要るのに走っていないジョブを、実行アダプタの capacity の範囲で起動する。
@@ -340,7 +362,8 @@ class Engine:
             if role in task.jobs or self.executor.capacity() <= 0:
                 continue
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
-            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)))
+            report = self._report() if role == Role.DISTILL else None
+            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
             if role == Role.DISTILL:
                 task.to_distill = []
             task.jobs[role] = job.id
@@ -549,7 +572,7 @@ class Engine:
             self.notifier.notify(task, f"{task.id} needs a decision: {' '.join(event.data['questions'])}")
 
     def _on_decision_resolved(self, task: Task, event: Event) -> None:
-        self._start_jobs(task)  # 起票のやり直しと、蒸留エージェント
+        self._start_jobs(task)  # 起票のやり直し
 
     def _on_task_ready(self, task: Task, event: Event) -> None:
         pass  # ボードに載った状態で配車を待つ
@@ -581,6 +604,7 @@ class Engine:
             if item.rule_ids:
                 self.decisions.decide(item.id, "hit", item.answer or "", predicted=item.answer)
         self.tasks.comment(task.id, f"merged: {task.pr}")
+        self._start_jobs(task)  # 蒸留エージェント（人が答えた未決事項があれば）
 
     def _on_task_failed(self, task: Task, event: Event) -> None:
         # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて人に上げる

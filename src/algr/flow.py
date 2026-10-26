@@ -49,6 +49,35 @@ EVENT_DATA: dict[str, tuple[str, ...]] = {
     "task.reopened": ("note",),
 }
 
+# 状態とイベントの説明。README の表と algr ui のヘルプはここから作るか、ここと突き合わせる（tests/test_help.py）
+STATE_HELP: dict[State, str] = {
+    S.INTAKE: "起票。未決事項をルールで埋め、埋まらないものは人に上げる",
+    S.NEEDS_DECISION: "人の答え待ち。答えると起票に戻る",
+    S.READY: "未決事項が無くなり、配車を待つ。依存先がすべて done になるまで配車しない",
+    S.IN_PROGRESS: "実装エージェントが実装し、PR を出す",
+    S.REVIEW: "レビューエージェントが PR と判断を確かめる",
+    S.APPROVED: "レビューが通り、人のマージを待つ（flow.merge = \"human\" のときだけ）",
+    S.DONE: "マージ済み。人が答えた未決事項があれば蒸留エージェントが走る",
+    S.FAILED: "失敗。理由はタスクの failure に残り、人が reopen すると起票に戻る",
+}
+
+# イベントごとの既定の処理
+EVENT_HELP: dict[str, str] = {
+    "task.created": "起票エージェントを起動する",
+    "decision.requested": "人に知らせる（channel は聞き方の違いだけ）",
+    "decision.resolved": "起票エージェントを起動する",
+    "task.ready": "配車を待つ",
+    "task.started": "実装エージェントを起動する",
+    "task.returned": "起票エージェントを起動する（ルールで埋まらなければ人に聞く）",
+    "task.submitted": "レビューエージェントを起動する",
+    "review.changes_requested": "実装エージェントを起動する（前の PR と指摘を渡す）",
+    "review.escalated": "異議のある判断を未決事項として起票に差し戻し、人に知らせる",
+    "review.approved": "マージのゲート（`flow.merge = \"human\"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る）",
+    "task.done": "ルールに従った判断を hit として記録し、人が答えた未決事項があれば蒸留エージェントを起動する",
+    "task.failed": "人に上げる",
+    "task.reopened": "起票エージェントを起動する",
+}
+
 # hook の差し込み口。イベント名のほかに、すべてのイベントを受ける "*" を使える
 HOOK_POINTS = (*EVENTS, "*")
 
@@ -58,6 +87,7 @@ class TransitionError(Exception):
 
 
 def _no_open_questions(task: Task) -> str | None:
+    """未決事項がゼロであること。"""
     if task.open_questions():
         ids = " ".join(q.id for q in task.open_questions())
         return f"{task.id} still has open questions: {ids}"
@@ -65,19 +95,21 @@ def _no_open_questions(task: Task) -> str | None:
 
 
 def _has_open_questions(task: Task) -> str | None:
+    """人に上げる未決事項が残っていること。"""
     if not task.open_questions():
         return f"{task.id} has no open question to ask"
     return None
 
 
 def _has_pr(task: Task) -> str | None:
+    """PR があること。"""
     if not task.pr:
         return f"{task.id} was submitted without a PR"
     return None
 
 
 def _fills_have_grounds(task: Task) -> str | None:
-    """判断には根拠を付ける：ルールで埋まった未決事項には、従ったルールが必ずある。"""
+    """ルールで埋めた未決事項には、従ったルールの ID が付いていること（判断には根拠を付ける）。"""
     for q in task.questions:
         if q.by == "rule" and not q.rule_ids:
             return f"{task.id} filled {q.id} by rule without citing one"

@@ -27,7 +27,7 @@ def test_loop_goes_around_once(engine):
     assert [q.id for q in task.open_questions()] == ["I1-1"]
     assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision: I1-1"}]  # 人に聞くときは必ず知らせる
 
-    # 人が答えると起票に戻り、ready になる。蒸留エージェントが判断をルールとして提案する
+    # 人が答えると起票に戻り、ready になる。マージされると、蒸留エージェントが人の答えをルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
     assert engine.decisions.proposals() == [{"id": "P001", "kind": "add", "rule": "auth: OAuth", "decision": "I1-1"}]
@@ -451,3 +451,16 @@ def test_watch_keeps_dispatching_until_stopped(engine):
     seen = []
     engine.watch(interval=0.02, on_events=seen.extend, until=lambda: state(engine, "I1") == State.DONE)
     assert [e.name for e in seen][-1] == "task.done"
+
+
+def test_distill_reads_the_report_and_proposes_retiring_unused_rules(engine):
+    engine.decisions.add("auth: OAuth")
+    for i in range(10):  # 判断が 10 件たまっても、このルールは一度も当たらない
+        engine.decisions.decide(f"X{i}-1", "none", "x")
+    assert engine.decisions.report()["drop_candidates"] == ["R001"]
+    task = engine.request_distill("anything")
+    run_until(engine, lambda: not engine.tasks.get(task.id).jobs)
+    job = json.loads((engine.executor.dir / "I1.distill.1" / "job.json").read_text(encoding="utf-8"))
+    assert job["input"]["report"]["drop_candidates"] == ["R001"]
+    # report から出した提案は、元になった決断 ID を持たない
+    assert engine.decisions.proposals() == [{"id": "P001", "kind": "retire", "rule_id": "R001", "reason": "report: 一度も当たっていない", "decision": ""}]
