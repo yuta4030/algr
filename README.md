@@ -244,7 +244,7 @@ model = "haiku"
 
 ### k2down
 
-判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。algr は最初に k2down を呼ぶときに `k2down --version` で確かめ、古ければエラーにします。
+判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`、版を固定するなら末尾に `@v0.4.0`）。提案の理由（`propose --reason`）を持つ v0.4 以降が要ります。algr は最初に k2down を呼ぶときに `k2down --version` で確かめ、古ければエラーにします。
 
 ```toml
 [adapters.decisions]
@@ -254,7 +254,8 @@ command = ["k2down"]                    # 省略時。uvx で動かすなら ["u
 ```
 
 蒸留エージェントの提案は `k2down propose` で k2down の proposals.json に積み、`algr accept` で `k2down accept`、`algr decline` で `k2down decline` を呼びます。
-受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
+受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。外す提案の理由は `--reason`、元になった決断 ID は `--decision` で渡します。
+k2down は README の「互換性」で `--json` の出力と終了コードを約束し、0.x のうちは壊れる変更でマイナーを上げます。アダプタは知らないキーを無視します。
 store を git で管理するなら、k2down のロック（`.k2down.lock`）を `.gitignore` に入れてください。
 rules.json の差分を PR にしてマージすることを、人の確認とします。
 

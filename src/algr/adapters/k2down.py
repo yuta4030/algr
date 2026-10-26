@@ -1,6 +1,6 @@
 """k2down の判断ストアアダプタ。k2down の CLI を呼んで、ルールの提示と判断の記録を行う。
 
-k2down は https://github.com/yuta4030/k2down 。`uv tool install git+https://github.com/yuta4030/k2down` で入る。
+k2down は https://github.com/yuta4030/k2down 。`uv tool install git+https://github.com/yuta4030/k2down` で入る（`@v0.4.0` のように版を固定できる）。
 k2down 自身は判定せず記録と集計だけを行うので、algr のコアと同じく判断はエージェントに任せられる。
 
 ルールの追加と外しは `k2down propose` で提案として積み、人が accept したときに k2down が rules.json に書く。
@@ -17,8 +17,8 @@ from typing import Any
 
 from algr.adapters import REPORT_KEYS, AdapterError, Context, Rule
 
-# 提案（propose / proposals / accept / decline）と report --json の形を使う
-MIN_VERSION = (0, 3, 0)
+# 提案の理由（propose --reason）と、report --json の declined_proposals の reason / decline_reason の形を使う
+MIN_VERSION = (0, 4, 0)
 
 
 class K2downError(AdapterError):
@@ -27,6 +27,15 @@ class K2downError(AdapterError):
 
 def _one_line(text: str) -> str:
     return " ".join(text.split())
+
+
+def _error(text: str) -> str:
+    """--json のときの k2down のエラー（stderr の {"error": ...}）は、文言だけにする。"""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return text
+    return data["error"] if isinstance(data, dict) and isinstance(data.get("error"), str) else text
 
 
 def _decision(source: str) -> list[str]:
@@ -68,7 +77,7 @@ class K2down:
         except FileNotFoundError as e:
             raise K2downError(f"k2down is not installed ({self.command[0]}): uv tool install git+https://github.com/yuta4030/k2down") from e
         if proc.returncode != 0:
-            raise K2downError(f"{name}: {proc.stderr.strip() or proc.stdout.strip()}")
+            raise K2downError(f"{name}: {_error(proc.stderr.strip() or proc.stdout.strip())}")
         return proc.stdout.strip()
 
     def rules(self) -> list[Rule]:
@@ -107,8 +116,7 @@ class K2down:
         return json.loads(self._run("propose", "add", _one_line(rule), *_decision(source), "--json"))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
-        # k2down の外す提案には理由の項目が無いので、ID で表せない出どころ（--source）に理由を入れる
-        args = ["propose", "retire", rule_id, *_decision(source), "--source", _one_line(reason), "--json"]
+        args = ["propose", "retire", rule_id, *_decision(source), "--reason", _one_line(reason), "--json"]
         return json.loads(self._run(*args))["id"]
 
     def proposals(self) -> list[dict[str, str]]:
@@ -118,7 +126,7 @@ class K2down:
         for p in json.loads(self._run("proposals", "--json"))["proposals"]:
             p.setdefault("decision", "")
             if p["kind"] == "retire":
-                p["reason"] = p.pop("source", "")
+                p.setdefault("reason", "")
             out.append(p)
         return out
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 argv = sys.argv[1:]
 if argv == ["--version"]:
-    print(os.environ.get("FAKE_K2DOWN_VERSION", "k2down 0.3.0"))
+    print(os.environ.get("FAKE_K2DOWN_VERSION", "k2down 0.4.0"))
     sys.exit(0)
 assert argv[0] == "--dir"
 store = Path(argv[1])
@@ -33,11 +33,16 @@ def add_rule(text):
     return rule_id
 
 
+def fail(message):
+    # k2down 0.4 から、--json のときのエラーは stderr に {"error": ...} で出る
+    print(json.dumps({"error": message}) if "--json" in args else f"error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
 def pending(proposal_id):
     proposal = next((p for p in proposals["proposals"] if p["id"] == proposal_id), None)
     if proposal is None:
-        print(f"error: unknown proposal: {proposal_id}", file=sys.stderr)
-        sys.exit(1)
+        fail(f"unknown proposal: {proposal_id}")
     return proposal
 
 
@@ -48,15 +53,15 @@ elif command == "add":
 elif command == "retire":
     rules_file.write_text(json.dumps([r for r in rules if r["id"] != args[0]]), encoding="utf-8")
 elif command == "apply" and "R404" in args:
-    print("error: unknown rule: R404", file=sys.stderr)
-    sys.exit(1)
+    fail("unknown rule: R404")
 elif command == "propose":
     kind, target = args[0], args[1]
     proposal = {"kind": kind, ("rule" if kind == "add" else "rule_id"): target}
     if option("--decision") is not None:
         proposal["decision"] = option("--decision")
-    if option("--source") is not None:
-        proposal["source"] = option("--source")
+    for key in ("source", "reason"):
+        if option(f"--{key}") is not None:
+            proposal[key] = option(f"--{key}")
     same = next((p for p in proposals["proposals"] if p["kind"] == kind and p.get("rule", p.get("rule_id")) == target), None)
     created = same is None
     if created:
