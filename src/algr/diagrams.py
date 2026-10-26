@@ -4,7 +4,9 @@
 状態やイベントを足したら、ここに箱と矢印を足す。見た目は algr ui で確かめる。
 
 見た目の約束：人はオレンジの箱、AI のエージェントは青の箱（右上に「人」「AI」の札）、データは灰色の円柱。
-レイヤーは帯で囲む。色は ui.html のトークン（.dg のクラス）から取る。
+状態は人でも AI でもないので白い箱にし、その状態で手を動かすのが人か AI かを左の線の色で示す。
+レイヤーは帯で囲む。図 1 が全体、図 2 が処理の層、図 3 がメタの層の中身で、同じものは同じ名前と色で描く。
+色は ui.html のトークン（.dg のクラス）から取る。
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ class Node:
     sub: str = ""
     kind: str = STATE
     h: float = 56
+    holder: str = ""  # 状態の箱だけ。その状態で手を動かすのが HUMAN か AGENT か
 
 
 @dataclass
@@ -95,6 +98,8 @@ def _node(n: Node) -> str:
         out += [_text(Text(n.x, n.y - 4 + dy, n.title, "b", "middle")), _text(Text(n.x, n.y + 14 + dy, n.sub, "q", "middle"))]
     else:
         out.append(_text(Text(n.x, n.y + 5 + dy, n.title, "b", "middle")))
+    if n.holder:
+        out.append(f'<rect x="{x + 4:g}" y="{y + 8:g}" width="4" height="{n.h - 16:g}" rx="2" class="bar {n.holder}"/>')
     if n.kind in TAGS:
         tx, ty = x + n.w - 30, y - 8
         out.append(f'<rect x="{tx:g}" y="{ty:g}" width="24" height="15" rx="7.5" class="tag {n.kind}"/>')
@@ -115,6 +120,13 @@ def _legend(kinds: list[str], y: float) -> str:
             label = {WRITE: "判断の書き込み", READ: "ルールの参照", FLOW: "流れ"}[kind]
             out.append(_text(Text(x + 38, y + 1, label)))
             x += 50 + 12 * len(label)
+        elif kind in ("holder-human", "holder-agent"):
+            holder = kind.split("-")[1]
+            out.append(f'<rect x="{x:g}" y="{y - 10:g}" width="18" height="14" rx="3" class="state"/>')
+            out.append(f'<rect x="{x + 2:g}" y="{y - 8:g}" width="3" height="10" rx="1.5" class="bar {holder}"/>')
+            label = {"human": "人が手を動かす状態", "agent": "AI が手を動かす状態"}[holder]
+            out.append(_text(Text(x + 28, y + 1, label)))
+            x += 40 + 12 * len(label)
         elif kind == "event":
             out.append(f'<circle cx="{x + 5:g}" cy="{y - 3:g}" r="4" class="dot"/>')
             out.append(_text(Text(x + 16, y + 1, "イベント（太字が名前、灰色が既定の処理）")))
@@ -149,29 +161,29 @@ def render(d: Diagram) -> str:
     return "".join(out)
 
 
-# --- 2 つの層 -----------------------------------------------------------------
+# --- 図 1：2 つの層（全体） -----------------------------------------------------
 
 LAYERS = Diagram(
     id="layers",
     title="処理の層でタスクが流れ、メタの層で判断がルールに育つ",
     width=760,
     height=600,
-    bands=[Band(56, 200, "処理の層（STP）"), Band(272, 104, "データ"), Band(392, 160, "メタの層（アルゴリズミック）")],
+    bands=[Band(56, 200, "処理の層（STP）→ 図 2"), Band(272, 104, "データ"), Band(392, 160, "メタの層（アルゴリズミック）→ 図 3")],
     nodes=[
-        Node("client", 380, 104, 520, "クライアント", "やることと目的を出し、決まらない点に答える", HUMAN, 48),
-        Node("intake", 180, 200, 160, "起票エージェント", "未決事項をルールで埋める", AGENT),
-        Node("implement", 380, 200, 160, "実装エージェント", "ready で着手し PR を出す", AGENT),
-        Node("review", 580, 200, 160, "レビューエージェント", "通ればマージへ", AGENT),
-        Node("decisions", 320, 320, 440, "判断", "人の答えも、ルールに従った判断も残る（k2down）", DATA, 60),
+        Node("client", 380, 104, 520, "クライアント", "algr new で依頼し、needs-decision で答える", HUMAN, 48),
+        Node("intake", 180, 200, 160, "起票エージェント", "intake：未決事項を埋める", AGENT),
+        Node("implement", 380, 200, 160, "実装エージェント", "in-progress：PR を出す", AGENT),
+        Node("review", 580, 200, 160, "レビューエージェント", "review：PR を確かめる", AGENT),
+        Node("decisions", 320, 320, 440, "判断", "人の答え・方針も、ルールに従った判断も（k2down）", DATA, 60),
         Node("rules", 660, 320, 140, "ルール", "rules.json", DATA, 60),
-        Node("distill", 200, 460, 160, "蒸留エージェント", "done のタスクから提案", AGENT),
-        Node("meta", 440, 460, 180, "メタプログラマー", "提案を accept / decline", HUMAN),
+        Node("distill", 200, 460, 160, "蒸留エージェント", "done のあと：提案を出す", AGENT),
+        Node("meta", 440, 460, 180, "メタプログラマー", "accept・merge・reopen", HUMAN),
     ],
     edges=[
         Edge("M160 128V172"),  # 依頼・答え
         Edge("M200 172V128"),  # needs-decision
         Edge("M380 172V128"),  # 想定外の判断
-        Edge("M580 172V128"),  # 異議・マージ待ち
+        Edge("M580 172V128"),  # 異議
         Edge("M24 214H100"),  # CI の失敗・派生タスク
         Edge("M260 200H300"),
         Edge("M460 200H500"),
@@ -190,7 +202,7 @@ LAYERS = Diagram(
         Text(152, 154, "依頼・答え", anchor="end"),
         Text(208, 154, "needs-decision"),
         Text(388, 154, "想定外の判断"),
-        Text(588, 154, "異議・マージ待ち"),
+        Text(588, 154, "異議"),
         Text(280, 192, "ready", anchor="middle"),
         Text(480, 192, "PR", anchor="middle"),
         Text(652, 280, "毎ジョブの入力", anchor="end"),
@@ -203,24 +215,24 @@ LAYERS = Diagram(
 )
 
 
-# --- 状態とイベント -----------------------------------------------------------
+# --- 図 2：処理の層の中身（状態とイベント） ---------------------------------------
 
 FLOW_DIAGRAM = Diagram(
     id="flow",
-    title="状態は 8 つ。箱の色はその状態で誰の手にあるか、点はイベント（hook の差し込み口）",
+    title="処理の層：状態は 8 つ。遷移ごとにイベントが 1 つ出て、hook の差し込み口になる",
     width=760,
     height=900,
     nodes=[
         Node("by-human", 190, 84, 200, "クライアントが依頼", "algr new", HUMAN),
         Node("by-agent", 410, 84, 200, "エージェントが依頼", "CI の失敗・派生タスク", AGENT),
-        Node("intake", 300, 200, 200, "intake", "起票エージェント", AGENT),
-        Node("needs-decision", 650, 330, 200, "needs-decision", "人が答える（algr answer）", HUMAN),
+        Node("intake", 300, 200, 200, "intake", "起票エージェント", holder=AGENT),
+        Node("needs-decision", 650, 330, 200, "needs-decision", "クライアントが答える", holder=HUMAN),
         Node("ready", 300, 330, 200, "ready", "配車待ち（依存先を待つ）"),
-        Node("in-progress", 300, 460, 200, "in-progress", "実装エージェント", AGENT),
-        Node("review", 300, 590, 200, "review", "レビューエージェント", AGENT),
-        Node("approved", 560, 720, 180, "approved", "人のマージ待ち（ゲート）", HUMAN),
-        Node("done", 300, 830, 200, "done", "マージ済み → 蒸留エージェント"),
-        Node("failed", 95, 720, 150, "failed", "人が reopen する", HUMAN),
+        Node("in-progress", 300, 460, 200, "in-progress", "実装エージェント", holder=AGENT),
+        Node("review", 300, 590, 200, "review", "レビューエージェント", holder=AGENT),
+        Node("approved", 560, 720, 180, "approved", "メタプログラマーがマージ", holder=HUMAN),
+        Node("done", 300, 830, 200, "done", "マージ済み → 蒸留へ（図 3）"),
+        Node("failed", 100, 720, 176, "failed", "メタプログラマーが reopen", holder=HUMAN),
     ],
     edges=[
         Edge("M190 112V130H300", arrow=False),
@@ -274,53 +286,49 @@ FLOW_DIAGRAM = Diagram(
         Text(140, 618, "作業中の 4 状態から", anchor="middle"),
         Text(62, 646, "task.reopened", "b s"),
     ],
-    legend=[HUMAN, AGENT, "event"],
+    legend=["holder-agent", "holder-human", "event"],
 )
 
 
-# --- ルールを育てる（メタプログラミング） ---------------------------------------
+# --- 図 3：メタの層の中身（判断がルールになるまで） ---------------------------------
 
 META = Diagram(
     id="meta",
-    title="人の答えが提案になり、メタプログラマーが受け入れたものだけがルールになる",
+    title="メタの層：判断が提案になり、メタプログラマーが受け入れたものだけがルールになる",
     width=760,
-    height=570,
+    height=560,
     nodes=[
-        Node("answers", 90, 90, 150, "人の答え", "done のタスクの分", DATA, 60),
-        Node("policy", 280, 90, 150, "人の方針", "タスクの外で言ったこと", HUMAN),
-        Node("distill", 90, 220, 140, "蒸留エージェント", "1 行ルールの提案", AGENT),
-        Node("proposals", 280, 220, 140, "提案", "足す・外す", DATA, 60),
-        Node("meta", 470, 220, 140, "メタプログラマー", "受け入れるか決める", HUMAN),
-        Node("rules", 670, 220, 140, "ルール", "rules.json（PR で入る）", DATA, 60),
-        Node("agents", 670, 350, 160, "起票・実装・レビュー", "ルールで判断を埋める", AGENT),
-        Node("decisions", 670, 480, 160, "判断の記録", "usage.jsonl", DATA, 60),
-        Node("report", 380, 480, 200, "k2down report", "当たり率・落とす／書き直す候補", PLAIN),
+        Node("people", 150, 80, 220, "クライアント・メタプログラマー", "", HUMAN, 40),
+        Node("decisions", 150, 170, 232, "判断", "人の答え・方針、ルールに従った判断", DATA, 60),
+        Node("distill", 380, 170, 150, "蒸留エージェント", "done のあとに読む", AGENT),
+        Node("proposals", 600, 170, 150, "提案", "足す・外す", DATA, 60),
+        Node("meta", 600, 320, 170, "メタプログラマー", "accept / decline", HUMAN),
+        Node("report", 380, 320, 170, "k2down report", "当たり率・見直す候補", PLAIN),
+        Node("rules", 600, 460, 150, "ルール", "rules.json（PR で入る）", DATA, 60),
+        Node("agents", 380, 460, 170, "起票・実装・レビュー", "図 2 の処理の層", AGENT),
     ],
     edges=[
-        Edge("M90 120V192"),
-        Edge("M280 118V150H130V192"),
-        Edge("M160 220H210"),
-        Edge("M350 220H400"),
-        Edge("M540 220H600"),
-        Edge("M670 250V322", READ),
-        Edge("M670 378V450", WRITE),
-        Edge("M590 480H482"),
-        Edge("M440 452V248"),
-        Edge("M510 248V420H630V450", WRITE),
+        Edge("M150 100V140"),  # 人 → 判断
+        Edge("M266 170H305"),  # 判断 → 蒸留
+        Edge("M455 170H525"),  # 蒸留 → 提案
+        Edge("M600 200V292"),  # 提案 → メタプログラマー
+        Edge("M600 348V430"),  # accept → ルール
+        Edge("M525 460H465", READ),  # ルール → エージェント
+        Edge("M295 460H90V200", WRITE),  # エージェント → 判断
+        Edge("M190 200V320H295"),  # 判断 → report
+        Edge("M465 320H515"),  # report → メタプログラマー
     ],
     texts=[
-        Text(205, 142, "algr distill（すぐ）", anchor="middle"),
-        Text(185, 184, "propose", anchor="middle"),
-        Text(375, 184, "algr proposals", anchor="middle"),
-        Text(570, 184, "algr accept", anchor="middle"),
-        Text(662, 290, "ジョブの入力", anchor="end"),
-        Text(678, 410, "従った・異議"),
-        Text(678, 425, "当たり"),
-        Text(536, 472, "集計", anchor="middle"),
-        Text(432, 350, "見直す（言い直す・", anchor="end"),
-        Text(432, 365, "外す提案を出す）", anchor="end"),
-        Text(518, 330, "algr decline"),
-        Text(518, 345, "（却下も残る）"),
+        Text(158, 124, "algr answer / algr distill"),
+        Text(285, 162, "読む", anchor="middle"),
+        Text(490, 162, "propose", anchor="middle"),
+        Text(608, 250, "algr proposals"),
+        Text(608, 393, "algr accept"),
+        Text(608, 408, "（decline も判断に残る）"),
+        Text(495, 452, "入力", anchor="middle"),
+        Text(192, 452, "判断を書く（従った・異議・当たり）", anchor="middle"),
+        Text(242, 312, "集計", anchor="middle"),
+        Text(490, 312, "見直す", anchor="middle"),
     ],
     legend=[HUMAN, AGENT, DATA, WRITE, READ],
 )
