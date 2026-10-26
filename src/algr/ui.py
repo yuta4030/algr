@@ -76,6 +76,45 @@ def _actions(task: Task) -> list[dict[str, str]]:
     return []
 
 
+def _read(task: Task | None, ids: list[str]) -> list[dict[str, Any]]:
+    questions = {q.id: q for q in task.questions} if task else {}
+    return [{"id": i, "text": questions[i].text, "answer": questions[i].answer} if i in questions else {"id": i} for i in ids]
+
+
+def distills(records: list[dict[str, Any]], tasks: list[Task], proposals: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """蒸留エージェントの動き。何を読み（人の答え・report の候補）、何を出したか（提案）を、新しい順に。
+
+    done のあとに走るので、タスクの進み具合からは見えない。起動を待っているもの（capacity が空かない）も先頭に出す。
+    """
+    by_id = {t.id: t for t in tasks}
+    pending = {p["id"] for p in proposals}
+
+    def run(task_id: str, state: str, read: list[str], **rest: Any) -> dict[str, Any]:
+        task = by_id.get(task_id)
+        base = {"job": None, "start": None, "end": None, "message": "", "report": {}, "proposals": []}
+        return {**base, "task_id": task_id, "title": task.title if task else "", "state": state, "read": _read(task, read), **rest}
+
+    runs: dict[str, dict[str, Any]] = {}
+    for r in records:
+        if r.get("role") != "distill":
+            continue
+        if "job_started" in r:
+            runs[r["job_started"]] = run(
+                r["task_id"], "running", r.get("questions", []), job=r["job_started"], start=r["ts"], report=r.get("report", {})
+            )
+        elif r.get("job") in runs:
+            runs[r["job"]].update(
+                state=r["state"],
+                end=r["ts"],
+                message=r.get("message", ""),
+                proposals=[{"id": pid, "open": pid in pending} for pid in r.get("proposals", [])],
+            )
+    waiting = [
+        run(t.id, "waiting", t.to_distill) for t in tasks if t.to_distill and t.state == State.DONE and "distill" not in t.jobs
+    ]
+    return waiting + sorted(runs.values(), key=lambda r: r["start"], reverse=True)
+
+
 def snapshot(engine: Engine) -> dict[str, Any]:
     """画面に要るものを 1 つの JSON にまとめる。"""
     records = stats.load(engine.event_log) if engine.event_log else []
@@ -85,6 +124,7 @@ def snapshot(engine: Engine) -> dict[str, Any]:
         by_task.setdefault(e["task_id"], []).append(e)
     tasks = engine.tasks.list()
     states = {t.id: t.state for t in tasks}
+    proposals = engine.decisions.proposals()
     return {
         "now": datetime.now(UTC).isoformat(timespec="seconds"),
         "flow": {
@@ -106,7 +146,8 @@ def snapshot(engine: Engine) -> dict[str, Any]:
         "events": events[-50:],
         "stats": stats.summarize(records),
         "rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()],
-        "proposals": engine.decisions.proposals(),
+        "proposals": proposals,
+        "distills": distills(records, tasks, proposals)[:20],
     }
 
 

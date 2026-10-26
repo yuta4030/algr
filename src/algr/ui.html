@@ -86,6 +86,10 @@ details.done-list summary::before { content: "▸ "; } details.done-list[open] s
 .list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
 .list li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
 .list li .btn { margin-left: auto; padding: 0 8px; }
+.distill li { display: grid; grid-template-columns: 10px 30px 1fr auto; gap: 6px; padding: 5px 0; cursor: pointer; border-top: 1px solid var(--line); }
+.distill li:first-child { border-top: 0; }
+.distill .io { grid-column: 3 / 5; color: var(--mute); }
+.distill .dot { align-self: center; }
 
 /* 詳細 */
 .scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .25); z-index: 5; display: none; }
@@ -237,6 +241,7 @@ main.page { display: block; }
   <div>
     <section><h2>指標</h2><div class="tiles" id="tiles"></div></section>
     <section><h2>最近の動き</h2><ul class="feed" id="feed"></ul></section>
+    <section><h2>蒸留 <span class="n" id="distill-n">0</span></h2><ul class="list distill" id="distills"></ul></section>
     <section><h2>ルール <span class="n" id="rule-n">0</span></h2><ul class="list" id="rules"></ul></section>
   </div>
 </main>
@@ -276,7 +281,8 @@ main.page { display: block; }
     <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から足す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
     <p><b>見直しも提案で届く。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。蒸留エージェントは <code>k2down report</code> の落とす候補（一度も当たらない）、書き直す候補（外れや異議が多い）、ぶつかる組から、外す提案と言い直しの提案も出す。メタプログラマーは report を読み込まなくても、提案を決めればよい。</p>
     <p><b>ゲートを持つ。</b>マージのゲート（<code>approved</code>）、失敗からのやり直し（<code>algr reopen</code>）、公開 IF の境界もメタプログラマーの持ち物。</p>
-    <p class="mute">ルールの変更は rules.json の差分として PR に載る。そのマージを人の確認とする。</p></div></div></section>
+    <p>蒸留エージェントの動き（何を読み、どの提案を出したか、失敗したか）は「いま」の蒸留の欄と、タスクの詳細で見られる。</p>
+        <p class="mute">ルールの変更は rules.json の差分として PR に載る。そのマージを人の確認とする。</p></div></div></section>
   <section class="prose"><h2>ID</h2><table class="htable"><tr><th>対象</th><th>形</th><th>振るところ</th></tr>
     <tr><td>タスク</td><td><code>I12</code></td><td>タスクのアダプタ</td></tr>
     <tr><td>未決事項・判断（決断 ID）</td><td><code>I12-3</code></td><td>タスクの中の通し番号。k2down の <code>--decision</code> にそのまま渡す</td></tr>
@@ -296,6 +302,16 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 // 足す提案はルールの文、外す提案は外すルールと理由
 const proposalText = (p) => p.kind === "retire" ? `${p.rule_id} を外す：${p.reason}` : p.rule;
 const ROLE = { intake: "起票", implement: "実装", review: "レビュー", distill: "蒸留" };
+const DISTILL_STATE = { waiting: ["queue", "起動待ち"], running: ["agent", "実行中"], completed: ["done", "完了"], failed: ["bad", "失敗"] };
+const REPORT = { drop_candidates: "落とす候補", rewrite_candidates: "書き直す候補", conflict_candidates: "ぶつかる組", declined_proposals: "却下した提案" };
+// 蒸留が読んだもの（人の答え・report の候補）と、出した提案
+function distillIO(d) {
+  const report = Object.entries(d.report).filter(([, n]) => n).map(([k, n]) => `${REPORT[k] || k} ${n}`).join(" · ");
+  const read = [d.read.length ? `人の答え ${d.read.map((q) => q.id).join(" ")}` : "", report ? `report ${report}` : ""].filter(Boolean).join(" ／ ");
+  const out = d.state === "failed" ? `<span style="color:var(--bad)">${esc(d.message)}</span>`
+    : d.state !== "completed" ? "" : d.proposals.length ? `提案 ${d.proposals.map((p) => p.open ? `<b title="未決定">${p.id}</b>` : `<span title="決定済み">${p.id}</span>`).join(" ")}` : "提案なし";
+  return `${esc(read || "読むものなし")}${out ? ` → ${out}` : ""}`;
+}
 const ACTION = { answer: "回答する", reopen: "やり直す", merge: "マージする" };
 let data = null, openId = null;
 
@@ -313,7 +329,7 @@ const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", min
 function who(t) {
   const p = t.progress;
   if (t.state === "failed") return ["bad", "失敗"];
-  if (t.state === "done") return ["done", "完了"];
+  if (t.state === "done") return p.roles.includes("distill") ? ["agent", "蒸留"] : ["done", "完了"];
   if (p.waiting === "human") return ["human", "あなた"];
   if (p.waiting === "agent") return ["agent", p.roles.filter((r) => r !== "distill").map((r) => ROLE[r]).join("・")];
   if (p.waiting === "deps") return ["deps", p.blocked_by.join(" ")];
@@ -395,6 +411,13 @@ function render() {
   $("feed").innerHTML = data.events.slice().reverse().slice(0, 30).map((e) =>
     `<li data-id="${e.task_id}"><span class="mute">${clock(e.ts)}</span><span class="mono mute">${e.task_id}</span><span class="ev mono">${e.name}</span></li>`).join("") || `<li class="mute">–</li>`;
 
+  // 蒸留は done のあとに走るので、進捗とは別に、何を読んで何を出したかを出す
+  $("distill-n").textContent = data.distills.filter((d) => d.state === "running" || d.state === "waiting").length;
+  $("distills").innerHTML = data.distills.slice(0, 8).map((d) => `<li data-id="${d.task_id}" title="${esc(d.job || "")}">
+    <i class="dot ${DISTILL_STATE[d.state][0]}"></i><span class="mono mute">${d.task_id}</span>
+    <span class="title">${esc(d.title)}</span><span class="mute">${DISTILL_STATE[d.state][1]}${d.end || d.start ? ` · ${ago(d.end || d.start)}` : ""}</span>
+    <span class="io">${distillIO(d)}</span></li>`).join("") || `<li class="mute">–</li>`;
+
   $("rule-n").textContent = data.rules.length;
   $("rules").innerHTML = data.proposals.map((p) =>
     `<li><span class="ground human">提案</span><span>${esc(proposalText(p))}</span><button class="btn" disabled title="CLI: algr accept ${p.id}">採用</button></li>`).join("") +
@@ -438,6 +461,8 @@ function detail(id) {
     ${qs ? `<h4>未決事項</h4>${qs}` : ""}
     ${ds ? `<h4>判断</h4>${ds}` : ""}
     ${t.feedback.length ? `<h4>修正依頼</h4>${t.feedback.map((f) => `<div class="item"><span>✎</span><span>${esc(f)}</span><span></span></div>`).join("")}` : ""}
+    ${data.distills.filter((d) => d.task_id === t.id).map((d) => `<h4>蒸留 <span class="mute">${DISTILL_STATE[d.state][1]}</span></h4>
+      <div class="item"><span class="mono mute">${d.job || ""}</span><span class="mute">${distillIO(d)}</span><span></span></div>`).join("")}
     <h4>経過</h4>
     <ul class="timeline">${t.events.map((e) => `<li class="${tone(e.name)}"><span class="mute">${clock(e.ts)}</span><span class="mono">${e.name}</span></li>`).join("")}</ul>`;
   document.body.classList.add("open");

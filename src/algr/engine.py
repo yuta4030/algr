@@ -364,12 +364,16 @@ class Engine:
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
             report = self._report() if role == Role.DISTILL else None
             job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
+            record: dict[str, Any] = {"job_started": job.id, "task_id": task.id, "role": str(role)}
             if role == Role.DISTILL:
+                # 蒸留が何を読んだか（人の答えと report の候補の数）を残し、画面で見えるようにする
+                record["questions"] = task.to_distill
+                record["report"] = {k: len(v) for k, v in (report or {}).items() if k != "rules" and isinstance(v, list)}
                 task.to_distill = []
             task.jobs[role] = job.id
             self.tasks.save(task)
             self.executor.start(job)
-            self._log({"job_started": job.id, "task_id": task.id, "role": str(role), "ts": _now()})
+            self._log({**record, "ts": _now()})
 
     def poll(self) -> None:
         """走っているジョブの状態を実行アダプタに聞き、終わったものの結果でタスクを先へ進める。"""
@@ -379,25 +383,26 @@ class Engine:
                 if status.state in (RunState.RUNNING, RunState.BLOCKED):
                     continue
                 with _retry_next_tick():
-                    if self._collect(listed.id, role, job_id, status):
-                        record = {"job": job_id, "task_id": listed.id, "role": role, "state": str(status.state)}
+                    extra = self._collect(listed.id, role, job_id, status)
+                    if extra is not None:
+                        record = {"job": job_id, "task_id": listed.id, "role": role, "state": str(status.state), **extra}
                         self._log({**record, "usage": status.usage, "turns": status.turns, "ts": _now()})
 
-    def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> bool:
+    def _collect(self, task_id: str, role: str, job_id: str, status: RunStatus) -> dict[str, Any] | None:
         """終わったジョブの結果を受け取る。保存がぶつかったら何も残さず、次の tick で同じ結果をもう一度受け取る。
 
-        受け取ったら True、もう受け取り済みなら False を返す。
+        受け取ったらジョブの終了の記録に足す項目（失敗の理由、蒸留が出した提案）を、もう受け取り済みなら None を返す。
         """
         # 前のジョブの処理でタスクが書き換わっているかもしれないので、読み直してから進める
         task = self.tasks.get(task_id)
         if task.jobs.get(role) != job_id:
-            return False
+            return None
         del task.jobs[role]
         for key, n in status.usage.items():
             task.usage[key] = task.usage.get(key, 0) + n
         if role != Role.DISTILL and ROLE_FOR_STATE.get(task.state) != role:
             self.tasks.save(task)  # 状態が先に進んだあとで届いた古い結果は捨てる
-            return True
+            return {}
         result = None
         if status.state == RunState.COMPLETED:
             try:
@@ -408,19 +413,19 @@ class Engine:
                 result, status.message = None, f"bad result from {role}: {e}"
         if result is None:
             self._job_failed(task, Role(role), status.message)
-        else:
-            self._job_done(task, result)
-            # 別件の起票は、このタスクの保存が通ってから行う。ぶつかって結果を受け取り直しても二重に起票しない
-            for new in getattr(result, "tasks", []):
-                self.create(
-                    new["title"],
-                    purpose=new.get("purpose", ""),
-                    questions=[{k: q[k] for k in QUESTION_FIELDS if k in q} for q in new.get("questions", [])],
-                    source="auto",
-                    priority=new.get("priority", 0),
-                    depends=new.get("depends", []),
-                )
-        return True
+            return {"state": "failed", "message": status.message}  # 結果が読めなかったものも失敗として残す
+        proposals = self._job_done(task, result)
+        # 別件の起票は、このタスクの保存が通ってから行う。ぶつかって結果を受け取り直しても二重に起票しない
+        for new in getattr(result, "tasks", []):
+            self.create(
+                new["title"],
+                purpose=new.get("purpose", ""),
+                questions=[{k: q[k] for k in QUESTION_FIELDS if k in q} for q in new.get("questions", [])],
+                source="auto",
+                priority=new.get("priority", 0),
+                depends=new.get("depends", []),
+            )
+        return {"proposals": proposals} if isinstance(result, DistillResult) else {}
 
     def _check_depends(self, tasks: list[dict[str, Any]]) -> None:
         known = {t.id for t in self.tasks.list()}
@@ -444,7 +449,8 @@ class Engine:
         task.failure = {"role": str(role), "message": message}
         self.emit("task.failed", task, role=str(role), message=message)
 
-    def _job_done(self, task: Task, result: Any) -> None:
+    def _job_done(self, task: Task, result: Any) -> list[str]:
+        """結果でタスクを先へ進める。蒸留なら出した提案の ID を返す。"""
         if isinstance(result, IntakeResult):
             self._intake_done(task, result)
         elif isinstance(result, ImplementResult):
@@ -452,11 +458,12 @@ class Engine:
         elif isinstance(result, ReviewResult):
             self._review_done(task, result)
         elif isinstance(result, DistillResult):
-            for r in result.rules:
-                self.decisions.propose(r["rule"], source=r["source"])
-            for r in result.retire:
-                self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"])
+            # 同じ提案は二重に出ないので、ぶつかって受け取り直しても ID は変わらない
+            proposals = [self.decisions.propose(r["rule"], source=r["source"]) for r in result.rules]
+            proposals += [self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"]) for r in result.retire]
             self.tasks.save(task)
+            return proposals
+        return []
 
     def _ask(self, task: Task, questions: list[Question]) -> list[str]:
         """未決事項を人に上げたと記録する。同じ問いは二度上げない。"""

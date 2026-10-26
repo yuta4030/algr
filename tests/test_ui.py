@@ -108,3 +108,27 @@ def test_trend_buckets_by_week_after_three_weeks():
     assert [(b["start"], b["tasks"]) for b in t["buckets"]] == [
         ("2026-08-31", 1), ("2026-09-07", 0), ("2026-09-14", 0), ("2026-09-21", 0), ("2026-09-28", 1),
     ]  # fmt: skip
+
+
+def test_snapshot_shows_what_distill_read_and_proposed(engine):
+    engine.decisions.add("auth: OAuth")
+    for i in range(10):  # 一度も当たらないルールは report の落とす候補になる
+        engine.decisions.decide(f"X{i}-1", "none", "x")
+    task = engine.request_distill("DB は Postgres", topic="db")
+    run_until(engine, lambda: not engine.tasks.get(task.id).jobs)
+    engine.decisions.accept("P001")
+
+    [run] = ui.snapshot(engine)["distills"]
+    assert run | {"start": None, "end": None} == {
+        "job": "I1.distill.1", "task_id": "I1", "title": task.title, "state": "completed", "start": None, "end": None,
+        "message": "", "read": [{"id": "I1-1", "text": "人の方針（タスクの外で受けたもの）", "answer": "DB は Postgres"}],
+        "report": {"drop_candidates": 1, "rewrite_candidates": 0, "conflict_candidates": 0, "declined_proposals": 0},
+        "proposals": [{"id": "P001", "open": False}, {"id": "P002", "open": True}],
+    }  # fmt: skip
+
+
+def test_snapshot_shows_distill_waiting_for_capacity(engine, monkeypatch):
+    monkeypatch.setattr(engine.executor, "capacity", lambda: 0)
+    task = engine.request_distill("DB は Postgres", topic="db")
+    [run] = ui.snapshot(engine)["distills"]
+    assert (run["state"], run["task_id"], [q["id"] for q in run["read"]]) == ("waiting", task.id, ["I1-1"])
