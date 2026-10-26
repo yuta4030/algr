@@ -11,12 +11,12 @@ PR の代わりにローカルのブランチを使い、マージは人が行�
 ## 0. 用意するもの
 
 ```sh
-uv tool install git+https://github.com/yuta4030/algr@claude/great-goodall-fiikna   # algr と algr-agent
+uv tool install git+https://github.com/yuta4030/algr                              # algr と algr-agent
 uv tool install git+https://github.com/yuta4030/k2down
 claude --version                                                                  # ログイン済みであること
 ```
 
-API を使うので費用がかかる。役ごとの上限は下の設定の `max_budget_usd` で決める。
+API キーで動かすなら費用がかかる（サブスクの OAuth でログインしていれば要らない）。役ごとの上限は下の設定の `max_budget_usd` で決める。
 
 ## 1. 砂場のリポジトリを作る
 
@@ -56,7 +56,7 @@ command = ["algr-agent"]
 max_parallel = 1        # 起票・レビューも同じ作業ツリーで動くので 1 つずつ
 
 [adapters.decisions]
-use = "k2down"          # .algr/decisions/ に rules.json と usage.jsonl ができる
+use = "k2down"          # .algr/decisions/ に rules.json・proposals.json・usage.jsonl ができる
 
 [agents.default]
 max_budget_usd = 1

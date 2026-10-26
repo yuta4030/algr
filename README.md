@@ -6,7 +6,7 @@ algr（/ˈælɡər/、アルガー）は、Algorithmic Development という働�
 - **メタの層（アルゴリズミック）**：人とAIが、処理を動かすルールとフローそのものを書き換える
 - **処理の層（STP）**：起票 → 実装 → レビュー → マージを、ルールに従って流す
 
-いまはフェーズ0（境界を引く）です。algr 本体とフェイクアダプタだけで、ループが一周します。
+いまはフェーズ1です。Claude Code（`algr-agent`）と k2down で実タスクを流し、algr 自身も algr で開発しています（[docs/dogfooding.md](docs/dogfooding.md)）。
 
 ## 人の役割
 
@@ -82,7 +82,7 @@ STP 率（人の回答・やり直し・マージが一度も入らずに done �
 失敗       intake / in-progress / review / approved ─▶ failed ─▶ intake（人が reopen する）
 ```
 
-人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の承認済みの review だけです。
+人が関わるのは needs-decision と failed、それにマージのゲートを置いたとき（`flow.merge = "human"`）の approved だけです。
 人が答えると必ず起票に戻り、そこから主経路に合流します。人に聞くときは必ず通知します。
 failed になった理由（`role` と `message`）はタスクの `failure` に残り、`algr show` で読めます。reopen すると消えます。
 エージェントが落ちたときの `message` には、エージェントの出力（`algr.agent` なら claude の `result` や `is_error`）の最後の方が入ります。
@@ -122,6 +122,8 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 - 知らないイベント名の hook は、設定の読み込みでエラーにします
 - イベントは再送されることがあるので、hook もアダプタと同じく冪等に書きます
 
+### 不変条件とタスクの持ち物
+
 遷移ごとに不変条件があります（例：ready にするには未決事項がゼロ、ルールで埋めた未決事項にはルールの ID が付いている）。
 
 タスクは 2 種類の判断を別々に持ちます。どちらも決断 ID（`I1-1`）をタスク内で通し番号で振ります。
@@ -146,7 +148,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 |---|---|---|
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
-| `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
+| `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
 | `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
@@ -160,13 +162,13 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 
 ### Claude Code で動かす
 
-`python -m algr.agent` は、役のプロンプトとジョブを Claude Code（`claude -p --output-format json`）に渡し、
+`algr-agent`（`python -m algr.agent`）は、役のプロンプトとジョブを Claude Code（`claude -p --output-format json`）に渡し、
 答えの最後の ```json ブロックを結果として書き戻すコマンドです。使ったトークン数も結果に添えます。
 
 ```toml
 [adapters.executor]
 use = "fake.process"
-command = ["python", "-m", "algr.agent"]
+command = ["algr-agent"]                # python -m algr.agent と同じ
 max_parallel = 2
 
 [agents.default]
@@ -199,7 +201,7 @@ merge = "auto"                          # "human" でマージに人のゲート
 use = "fake.tasks"                      # 組み込み名
 [adapters.executor]
 use = "fake.process"
-command = ["claude", "-p", "..."]       # 省略するとフェイクのエージェント
+command = ["algr-agent"]                # Claude Code で動かす（python -m algr.agent と同じ）。省略するとフェイクのエージェント
 max_parallel = 2                        # ジョブを同時に走らせる数
 [adapters.notify]
 use = ".algr/adapters/slack.py:Slack"   # リポジトリに置いたアダプタ
