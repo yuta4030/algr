@@ -327,7 +327,8 @@ class Engine:
 
     def _wanted(self, task: Task) -> list[Role]:
         roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE else []
-        if task.to_distill:
+        # 蒸留はタスクが done になってから 1 回にまとめる。途中で答えが変わっても最後の答えで蒸留し、マージされた答えだけをルールの候補にする
+        if task.to_distill and task.state == State.DONE:
             roles.append(Role.DISTILL)
         return roles
 
@@ -549,7 +550,7 @@ class Engine:
             self.notifier.notify(task, f"{task.id} needs a decision: {' '.join(event.data['questions'])}")
 
     def _on_decision_resolved(self, task: Task, event: Event) -> None:
-        self._start_jobs(task)  # 起票のやり直しと、蒸留エージェント
+        self._start_jobs(task)  # 起票のやり直し
 
     def _on_task_ready(self, task: Task, event: Event) -> None:
         pass  # ボードに載った状態で配車を待つ
@@ -581,6 +582,7 @@ class Engine:
             if item.rule_ids:
                 self.decisions.decide(item.id, "hit", item.answer or "", predicted=item.answer)
         self.tasks.comment(task.id, f"merged: {task.pr}")
+        self._start_jobs(task)  # 蒸留エージェント（人が答えた未決事項があれば）
 
     def _on_task_failed(self, task: Task, event: Event) -> None:
         # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて人に上げる

@@ -94,7 +94,7 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 |---|---|---|
 | `task.created` | `source`（`human` / `auto`） | 起票エージェントを起動する |
 | `decision.requested` | `channel`（`inline` / `queue`）、`questions` | 人に知らせる（channel は聞き方の違いだけ） |
-| `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントと蒸留エージェントを起動する |
+| `decision.resolved` | `questions`（人が答えたもの） | 起票エージェントを起動する |
 | `task.ready` | — | 配車を待つ |
 | `task.started` | — | 実装エージェントを起動する |
 | `task.returned` | `questions` | 起票エージェントを起動する（ルールで埋まらなければ人に聞く） |
@@ -102,7 +102,7 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 | `review.changes_requested` | `changes`（修正依頼） | 実装エージェントを起動する（前の PR と指摘を渡す） |
 | `review.escalated` | `questions`、`reasons`（決断 ID → 異議） | 異議のある判断を未決事項として起票に差し戻し、人に知らせる |
 | `review.approved` | `pr` | マージのゲート（`flow.merge = "human"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る） |
-| `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録する |
+| `task.done` | `pr`、`merged_by`（`auto` / `human`） | ルールに従った判断を hit として記録し、人が答えた未決事項があれば蒸留エージェントを起動する |
 | `task.failed` | `role`、`message` | 人に上げる |
 | `task.reopened` | `note` | 起票エージェントを起動する |
 
@@ -147,7 +147,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
 | `review` | review にいる間（承認済みを除く） | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
-| `distill` | 人が答えた未決事項がある時（`algr distill` の方針を含む） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
+| `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
 別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。

@@ -75,6 +75,9 @@ def test_history_counts_transitions_rules_and_jobs(gated):
     run_until(gated, lambda: str(gated.tasks.get("I1").state) == "approved" and str(gated.tasks.get("I2").state) == "needs-decision")
     gated.resolve("I2", {"I2-1": "sqlite"})
     run_until(gated, lambda: str(gated.tasks.get("I2").state) == "approved" and not gated.tasks.get("I2").jobs)
+    assert gated.decisions.proposals() == []  # 蒸留は done になってから
+    gated.merge("I2")
+    run_until(gated, lambda: not gated.tasks.get("I2").jobs)
 
     h = ui.history(gated)
     edges = {(e["event"], e["from"]): e["count"] for e in h["flow"]["edges"]}
@@ -82,7 +85,7 @@ def test_history_counts_transitions_rules_and_jobs(gated):
     assert edges[("decision.requested", "intake")] == 1
     assert edges[("task.reopened", "failed")] == 0  # 通っていない遷移も図に出す
     states = {s["state"]: s for s in h["flow"]["states"]}
-    assert states["approved"]["now"] == 2
+    assert (states["approved"]["now"], states["done"]["now"]) == (1, 1)
     assert states["needs-decision"]["stay_median_s"] is not None
 
     rules = h["rules"]

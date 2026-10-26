@@ -2,7 +2,7 @@
 
 本物の Claude Code と k2down で、砂場のリポジトリに 2 件のタスクを流す。見たいのは次の 3 つ。
 
-1. 起票 → 人の回答 → 蒸留 → 実装 → レビュー → マージが一周する
+1. 起票 → 人の回答 → 実装 → レビュー → マージ → 蒸留が一周する
 2. 人の答えがルールになり、2 件目の同じ論点は人に聞かずにルールで埋まる（Touchless）
 3. `algr stats` と記録（`events.jsonl`、ジョブのログ）で、何が起きたかを後から追える
 
@@ -113,17 +113,18 @@ algr show I1                                     # 起票エージェントが�
 algr answer I1 I1-1="TypeError を投げる"          # 残りの未決事項も同じように答える
 ```
 
-答えると起票に戻り、蒸留・実装・レビューが流れる。レビューが通ると `[review, approved]` で止まる。
+答えると起票に戻り、実装・レビューが流れる。レビューが通ると `[review, approved]` で止まる。
 
 ```sh
+git log --oneline main..algr/I1 && git diff main...algr/I1
+git merge algr/I1
+algr merge I1                                    # done にし、ルールに従った判断を hit として記録する。蒸留エージェントが走る
+algr run                                         # 蒸留が終わるまで回す
+
 algr proposals                                   # 蒸留エージェントのルール提案
 algr accept P-a2m4n                              # 提案をルールにする（k2down accept）
 k2down --dir .algr/decisions list
 git add .algr/decisions && git commit -m "rule: P-a2m4n"   # ルールの PR のマージにあたる
-
-git log --oneline main..algr/I1 && git diff main...algr/I1
-git merge algr/I1
-algr merge I1                                    # done にし、ルールに従った判断を hit として記録する
 ```
 
 ## 4. 2 件目：同じ論点がルールで埋まる
