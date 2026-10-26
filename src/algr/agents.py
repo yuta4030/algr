@@ -3,16 +3,12 @@
 エージェント（ホスト側の AI）は実行アダプタがジョブとして起動し、数分から数十分かけて結果を返す。
 コアは判断の中身を見ない。結果の形を確かめ、それに従って状態を動かして記録するだけ。
 
-役ごとの結果（JSON）：
-- intake：   {"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}
-             fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
-- implement：{"pr": str, "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}
-             question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
-             想定外の判断が出たら、勝手に決めずに {"returned": {"text", "topic"?, "recommended"?}}
-- review：   {"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}
-             objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
-- distill：  {"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}
-             rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く
+役ごとの起動する時と結果（JSON）の形は ROLE_HELP。
+- intake：   fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
+- implement：question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
+             想定外の判断が出たら、勝手に決めずに returned で返す
+- review：   objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
+- distill：  rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く
 
 intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
 depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
@@ -25,6 +21,31 @@ from typing import Any
 
 from algr.adapters import Rule
 from algr.model import Role, Task
+
+# 役ごとの起動する時（when）と結果の形（result）。README の表と algr ui のヘルプはここと突き合わせる（tests/test_help.py）
+ROLE_HELP: dict[Role, dict[str, str]] = {
+    Role.INTAKE: {
+        "name": "起票",
+        "when": "intake にいる間",
+        "result": '`{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}`',
+    },
+    Role.IMPLEMENT: {
+        "name": "実装",
+        "when": "in-progress にいる間",
+        "result": '`{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、'
+        '差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}`',
+    },
+    Role.REVIEW: {
+        "name": "レビュー",
+        "when": "review にいる間",
+        "result": '`{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}`',
+    },
+    Role.DISTILL: {
+        "name": "蒸留",
+        "when": "done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ）",
+        "result": '`{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}`',
+    },
+}
 
 
 class ResultError(Exception):

@@ -38,6 +38,13 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr ui                                           # see the flow in a browser (http://127.0.0.1:8765)
 """
 
+# 人の操作がどちらの立場のものか。README の「人の役割」と algr ui のヘルプはここと突き合わせる（tests/test_help.py）。
+# ここに無いコマンドは、見るためのものと、フローを回すためのもの
+STANCES: dict[str, tuple[str, ...]] = {
+    "クライアント": ("new", "answer", "depends"),
+    "メタプログラマー": ("distill", "accept", "decline", "merge", "reopen"),
+}
+
 INIT_CONFIG = """\
 # algr の設定。個人の ~/.algr/config.toml が同じ項目を上書きする。
 # use には組み込み名（fake.tasks など）、'pkg.module:Name'、'.algr/adapters/x.py:Name' を書ける。
@@ -110,6 +117,13 @@ def _answer(value: str) -> tuple[str, str]:
     if not sep or not answer:
         raise argparse.ArgumentTypeError(f"expected QUESTION_ID=ANSWER, got {value!r}")
     return qid, answer
+
+
+def commands() -> list[dict[str, str]]:
+    """サブコマンドと、その help と立場（人の操作でなければ空）。"""
+    stance = {name: s for s, names in STANCES.items() for name in names}
+    sub = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    return [{"name": a.dest, "help": a.help or "", "stance": stance.get(a.dest, "")} for a in sub._choices_actions]
 
 
 def build_parser() -> argparse.ArgumentParser:

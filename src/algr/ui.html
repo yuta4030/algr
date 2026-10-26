@@ -117,6 +117,18 @@ nav a { color: var(--mute); text-decoration: none; font-size: 12px; padding: 3px
 nav a.on { background: var(--panel); color: var(--ink); font-weight: 600; }
 .view[hidden] { display: none; }
 main.page { display: block; }
+
+/* ヘルプ：文章はコードから組み立てる（/api/help） */
+.help p { margin: 0 0 8px; }
+.help a { color: var(--agent); }
+.htable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.htable th { text-align: left; font-size: 11px; font-weight: 600; color: var(--mute); padding: 0 8px 6px 0; }
+.htable td { border-top: 1px solid var(--line); padding: 7px 8px 7px 0; vertical-align: top; }
+.htable td:first-child { white-space: nowrap; }
+.htable code, .help code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg); border-radius: 4px; padding: 0 4px; }
+.help ul { margin: 4px 0 0; padding-left: 18px; color: var(--mute); font-size: 12px; }
+.help details summary { cursor: pointer; font-size: 12px; color: var(--mute); }
+.help pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border-radius: 6px; padding: 10px; margin: 6px 0 0; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .grid2 > section { margin-bottom: 0; }
 #tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); display: none; white-space: nowrap; }
@@ -188,7 +200,7 @@ main.page { display: block; }
 <body>
 <header>
   <h1>algr</h1>
-  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a></nav>
+  <nav id="nav"><a href="#now">いま</a><a href="#trend">推移</a><a href="#rules">ルール</a><a href="#flow">フロー</a><a href="#jobs">ジョブ</a><a href="#help">ヘルプ</a></nav>
   <div class="counts" id="counts"></div>
   <div class="updated mute"><span class="live" id="live"></span><span id="updated"></span></div>
 </header>
@@ -215,6 +227,7 @@ main.page { display: block; }
 </main>
 <main class="view page" id="view-flow" hidden><section class="flow"><h2>遷移の回数と滞在時間（中央値）</h2><div id="flow"></div></section></main>
 <main class="view page" id="view-jobs" hidden><section><div class="filters"><div class="seg" id="j-range"></div><div class="legend" id="j-legend" style="margin:0"></div></div><div id="jobs"></div></section></main>
+<main class="view page help" id="view-help" hidden><div id="help"></div></main>
 <div id="tip"></div>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
@@ -540,7 +553,37 @@ function renderJobs() {
       <span class="age busy">${dur(r.busy)}</span></div>`).join("") || `<div class="empty">この期間のジョブはありません</div>`);
 }
 
+// `code` だけを <code> にする。ほかはエスケープする
+const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+let help = null;
+function renderHelp() {
+  const h = help, by = (s) => h.commands.filter((c) => c.stance === s);
+  const cmds = (list) => list.map((c) => `<tr><td><code>algr ${esc(c.name)}</code></td><td>${esc(c.help)}</td></tr>`).join("");
+  $("help").innerHTML = `
+  <section><h2>algr</h2>
+    <p>ルールで判断を埋め、タスクを人の手に触れずにマージまで流すフロー。なぜこうしているか（コンセプト・戦略・戦術）は<a href="${esc(h.concept)}" target="_blank" rel="noopener">企画書</a>にある。</p>
+    <p class="mute">このページはコード（状態遷移、不変条件、役ごとの結果の形、プロンプト、CLI）から組み立てている。遷移ごとの実績は<a href="#flow">フロー</a>で見られる。</p></section>
+  <section><h2>人の操作</h2><table class="htable">
+    ${h.stances.map((s) => `<tr><th colspan="2">${esc(s.name)}</th></tr>${cmds(by(s.name))}`).join("")}
+    <tr><th colspan="2">見る・回す</th></tr>${cmds(by(""))}</table></section>
+  <section><h2>状態</h2><table class="htable">${h.states.map((s) => `<tr><td><code>${esc(s.state)}</code></td><td>${esc(s.help)}</td></tr>`).join("")}</table></section>
+  <section><h2>イベントと遷移</h2><table class="htable"><tr><th>イベント</th><th>遷移</th><th>既定の処理</th></tr>
+    ${h.events.map((e) => `<tr><td><code>${esc(e.name)}</code></td>
+      <td>${e.from.length ? e.from.map(esc).join(" / ") : "（新規）"} → ${esc(e.to)}${e.data.length ? `<div class="mute">${e.data.map((d) => `<code>${esc(d)}</code>`).join(" ")}</div>` : ""}</td>
+      <td>${inline(e.help)}${e.invariants.length ? `<ul>${e.invariants.map((i) => `<li>${inline(i)}</li>`).join("")}</ul>` : ""}</td></tr>`).join("")}</table></section>
+  <section><h2>エージェントの役</h2><table class="htable"><tr><th>役</th><th>起動する時</th><th>結果</th></tr>
+    ${h.roles.map((r) => `<tr><td><code>${esc(r.role)}</code> ${esc(r.name)}</td><td>${inline(r.when)}</td>
+      <td>${inline(r.result)}<details><summary>プロンプト</summary><pre>${esc(r.prompt)}</pre></details></td></tr>`).join("")}</table>
+    <details><summary>共通のプロンプト（守ること・安全網・結果の返し方）</summary><pre>${esc(h.common_prompt)}</pre></details>
+    <p class="mute">利用側の追記は <code>.algr/prompts/common.md</code> と <code>.algr/prompts/&lt;役&gt;.md</code> に置く。</p></section>`;
+}
+async function loadHelp() {
+  if (!help) { try { help = await (await fetch("/api/help", { cache: "no-store" })).json(); } catch { return; } }
+  renderHelp();
+}
+
 function renderView() {
+  if (view === "help") return loadHelp();
   if (view === "now" || !hist) return;
   ({ trend: renderTrend, rules: renderRules, flow: renderFlow, jobs: renderJobs })[view]();
 }
@@ -549,7 +592,7 @@ document.addEventListener("click", (ev) => {
   if (b) { range = b.dataset.range; renderJobs(); }
 });
 async function loadHistory() {
-  if (view === "now") return;
+  if (view === "now" || view === "help") return;
   try { hist = await (await fetch("/api/history", { cache: "no-store" })).json(); renderView(); } catch { $("live").style.background = "var(--bad)"; }
 }
 function route() {
