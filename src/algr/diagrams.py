@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from html import escape
 
@@ -57,6 +58,8 @@ class Band:
     y: float
     h: float
     label: str
+    x: float = 12
+    w: float = 0  # 0 なら図の幅いっぱい
 
 
 @dataclass
@@ -147,8 +150,9 @@ def render(d: Diagram) -> str:
         _text(Text(24, 34, d.title, "title")),
     ]
     for b in d.bands:
-        out.append(f'<rect x="12" y="{b.y:g}" width="{d.width - 24:g}" height="{b.h:g}" rx="12" class="band"/>')
-        out.append(_text(Text(26, b.y + b.h - 10, b.label, "q b")))
+        w = b.w or d.width - 24
+        out.append(f'<rect x="{b.x:g}" y="{b.y:g}" width="{w:g}" height="{b.h:g}" rx="12" class="band"/>')
+        out.append(_text(Text(b.x + 14, b.y + b.h - 10, b.label, "q b")))
     for e in d.edges:
         marker = f' marker-end="url(#{d.id}-{"r" if e.kind == READ else "a"})"' if e.arrow else ""
         out.append(f'<path d="{e.d}" class="ln {e.kind}"{marker}/>')
@@ -161,55 +165,51 @@ def render(d: Diagram) -> str:
     return "".join(out)
 
 
-# --- 図 1：2 つの層（全体） -----------------------------------------------------
+# --- 図 1：全体（列が人・AI・データ、行が処理の層とメタの層） ---------------------------
 
 LAYERS = Diagram(
     id="layers",
-    title="処理の層でタスクが流れ、メタの層で判断がルールに育つ",
+    title="列が人・AI・データ、行が処理の層とメタの層。データは両方の層で共有する",
     width=760,
-    height=600,
-    bands=[Band(56, 200, "処理の層（STP）→ 図 2"), Band(272, 104, "データ"), Band(392, 160, "メタの層（アルゴリズミック）→ 図 3")],
+    height=530,
+    bands=[
+        Band(80, 160, "処理の層（STP）→ 図 2", w=488),
+        Band(276, 164, "メタの層（アルゴリズミック）→ 図 3", w=488),
+        Band(80, 360, "データ", x=528, w=220),
+    ],
     nodes=[
-        Node("client", 380, 104, 520, "クライアント", "algr new で依頼し、needs-decision で答える", HUMAN, 48),
-        Node("intake", 180, 200, 160, "起票エージェント", "intake：未決事項を埋める", AGENT),
-        Node("implement", 380, 200, 160, "実装エージェント", "in-progress：PR を出す", AGENT),
-        Node("review", 580, 200, 160, "レビューエージェント", "review：PR を確かめる", AGENT),
-        Node("decisions", 320, 320, 440, "判断", "人の答え・方針も、ルールに従った判断も（k2down）", DATA, 60),
-        Node("rules", 660, 320, 140, "ルール", "rules.json", DATA, 60),
-        Node("distill", 200, 460, 160, "蒸留エージェント", "done のあと：提案を出す", AGENT),
-        Node("meta", 440, 460, 180, "メタプログラマー", "accept・merge・reopen", HUMAN),
+        Node("client", 120, 165, 164, "クライアント", "依頼し、問いに答える", HUMAN, 64),
+        Node("agents", 382, 165, 200, "起票・実装・レビュー", "ルールで判断を埋めて流す", AGENT, 64),
+        Node("meta", 120, 355, 164, "メタプログラマー", "accept・merge・reopen", HUMAN, 64),
+        Node("distill", 382, 355, 200, "蒸留エージェント", "人の答えと report から提案", AGENT, 64),
+        Node("decisions", 640, 125, 160, "判断", "人の答えも、AI の判断も", DATA),
+        Node("rules", 640, 210, 160, "ルール", "rules.json", DATA),
+        Node("report", 640, 300, 170, "k2down report", "落とす／書き直す候補", PLAIN, 48),
+        Node("proposals", 640, 380, 160, "提案", "足す・外す", DATA),
     ],
     edges=[
-        Edge("M160 128V172"),  # 依頼・答え
-        Edge("M200 172V128"),  # needs-decision
-        Edge("M380 172V128"),  # 想定外の判断
-        Edge("M580 172V128"),  # 異議
-        Edge("M24 214H100"),  # CI の失敗・派生タスク
-        Edge("M260 200H300"),
-        Edge("M460 200H500"),
-        Edge("M180 228V290", WRITE),
-        Edge("M380 228V290", WRITE),
-        Edge("M520 228V290", WRITE),
-        Edge("M660 290V256", READ),  # ルール → 処理の層
-        Edge("M200 350V432"),  # 判断 → 蒸留
-        Edge("M440 350V432"),  # 判断 → メタプログラマー（report で見直す）
-        Edge("M280 460H350"),  # 提案
-        Edge("M530 460H660V350"),  # accept
+        Edge("M202 155H282"),  # 依頼・答え
+        Edge("M282 177H202"),  # 問い（needs-decision）
+        Edge("M482 140H560", WRITE),  # エージェント → 判断
+        Edge("M560 210H420V197", READ),  # ルール → エージェント
+        Edge("M720 125H744V300H725"),  # 判断 → report
+        Edge("M555 300H420V323"),  # report → 蒸留
+        Edge("M482 365H560"),  # 蒸留 → 提案
+        Edge("M640 408V470H120V387"),  # 提案 → メタプログラマー
+        Edge("M202 345H232V258H600V238"),  # accept → ルール
     ],
     texts=[
-        Text(24, 184, "CI の失敗・"),
-        Text(24, 200, "派生タスク"),
-        Text(152, 154, "依頼・答え", anchor="end"),
-        Text(208, 154, "needs-decision"),
-        Text(388, 154, "想定外の判断"),
-        Text(588, 154, "異議"),
-        Text(280, 192, "ready", anchor="middle"),
-        Text(480, 192, "PR", anchor="middle"),
-        Text(652, 280, "毎ジョブの入力", anchor="end"),
-        Text(208, 396, "人の答えを読む"),
-        Text(448, 396, "記録から見直す（report）"),
-        Text(315, 452, "提案", anchor="middle"),
-        Text(596, 452, "accept", anchor="middle"),
+        Text(120, 66, "人", "q b", "middle"),
+        Text(382, 66, "AI のエージェント", "q b", "middle"),
+        Text(638, 66, "データ", "q b", "middle"),
+        Text(242, 147, "依頼・答え", anchor="middle"),
+        Text(242, 194, "問い", anchor="middle"),
+        Text(521, 132, "書く", anchor="middle"),
+        Text(490, 203, "入力", anchor="middle"),
+        Text(486, 292, "候補を読む", anchor="middle"),
+        Text(521, 357, "提案", anchor="middle"),
+        Text(380, 463, "algr proposals", anchor="middle"),
+        Text(330, 251, "algr accept", anchor="middle"),
     ],
     legend=[HUMAN, AGENT, DATA, WRITE, READ],
 )
@@ -290,45 +290,67 @@ FLOW_DIAGRAM = Diagram(
 )
 
 
-# --- 図 3：メタの層の中身（判断がルールになるまで） ---------------------------------
+# --- 図 3：メタの層の中身（判断がルールになり、また判断に戻る輪） ---------------------------
+
+def _on_ring(deg: float, n: Node, cx: float, cy: float, rx: float, ry: float) -> Node:
+    a = math.radians(deg)
+    n.x, n.y = round(cx + rx * math.cos(a)), round(cy + ry * math.sin(a))
+    return n
+
+
+def _ring_edge(a: Node, b: Node, rx: float, ry: float, kind: str = FLOW) -> Edge:
+    """a から b へ、輪に沿った弧で箱の縁から縁まで結ぶ。"""
+
+    def rim(n: Node, tx: float, ty: float) -> tuple[float, float]:
+        dx, dy = tx - n.x, ty - n.y
+        k = min(n.w / 2 / max(abs(dx), 1e-6), n.h / 2 / max(abs(dy), 1e-6)) * 1.08
+        return n.x + dx * k, n.y + dy * k
+
+    (sx, sy), (ex, ey) = rim(a, b.x, b.y), rim(b, a.x, a.y)
+    return Edge(f"M{sx:.0f} {sy:.0f}A{rx:g} {ry:g} 0 0 1 {ex:.0f} {ey:.0f}", kind)
+
+
+_RING = (380, 290, 270, 175)  # 中心と半径
+_LOOP = [
+    _on_ring(-90, Node("decisions", 0, 0, 220, "判断", "人の答え・方針も、AI の判断も", DATA, 60), *_RING),
+    _on_ring(-25, Node("distill", 0, 0, 160, "蒸留エージェント", "人の答えと report を読む", AGENT), *_RING),
+    _on_ring(35, Node("proposals", 0, 0, 140, "提案", "足す・外す", DATA, 60), *_RING),
+    _on_ring(90, Node("meta", 0, 0, 170, "メタプログラマー", "accept / decline", HUMAN), *_RING),
+    _on_ring(145, Node("rules", 0, 0, 150, "ルール", "rules.json（PR で入る）", DATA, 60), *_RING),
+    _on_ring(205, Node("agents", 0, 0, 170, "起票・実装・レビュー", "図 2 の処理の層", AGENT), *_RING),
+]
 
 META = Diagram(
     id="meta",
-    title="メタの層：判断が提案になり、メタプログラマーが受け入れたものだけがルールになる",
+    title="メタの層：判断から出て判断に戻る 1 周で、ルールが育つ",
     width=760,
     height=560,
     nodes=[
-        Node("people", 150, 80, 220, "クライアント・メタプログラマー", "", HUMAN, 40),
-        Node("decisions", 150, 170, 232, "判断", "人の答え・方針、ルールに従った判断", DATA, 60),
-        Node("distill", 380, 170, 150, "蒸留エージェント", "done のあとに読む", AGENT),
-        Node("proposals", 600, 170, 150, "提案", "足す・外す", DATA, 60),
-        Node("meta", 600, 320, 170, "メタプログラマー", "accept / decline", HUMAN),
-        Node("report", 380, 320, 170, "k2down report", "当たり率・見直す候補", PLAIN),
-        Node("rules", 600, 460, 150, "ルール", "rules.json（PR で入る）", DATA, 60),
-        Node("agents", 380, 460, 170, "起票・実装・レビュー", "図 2 の処理の層", AGENT),
+        *_LOOP,
+        Node("report", 380, 260, 180, "k2down report", "落とす／書き直す候補", PLAIN),
+        Node("people", 130, 70, 220, "クライアント・メタプログラマー", "", HUMAN, 40),
     ],
     edges=[
-        Edge("M150 100V140"),  # 人 → 判断
-        Edge("M266 170H305"),  # 判断 → 蒸留
-        Edge("M455 170H525"),  # 蒸留 → 提案
-        Edge("M600 200V292"),  # 提案 → メタプログラマー
-        Edge("M600 348V430"),  # accept → ルール
-        Edge("M525 460H465", READ),  # ルール → エージェント
-        Edge("M295 460H90V200", WRITE),  # エージェント → 判断
-        Edge("M190 200V320H295"),  # 判断 → report
-        Edge("M465 320H515"),  # report → メタプログラマー
+        *(
+            _ring_edge(_LOOP[i], _LOOP[(i + 1) % 6], _RING[2], _RING[3], READ if i == 4 else WRITE if i == 5 else FLOW)
+            for i in range(6)
+        ),
+        Edge("M380 145V232"),  # 判断 → report
+        Edge("M470 260H600V242"),  # report → 蒸留
+        Edge("M240 70H300V85", WRITE),  # 人 → 判断（answer / distill）
     ],
     texts=[
-        Text(158, 124, "algr answer / algr distill"),
-        Text(285, 162, "読む", anchor="middle"),
-        Text(490, 162, "propose", anchor="middle"),
-        Text(608, 250, "algr proposals"),
-        Text(608, 393, "algr accept"),
-        Text(608, 408, "（decline も判断に残る）"),
-        Text(495, 452, "入力", anchor="middle"),
-        Text(192, 452, "判断を書く（従った・異議・当たり）", anchor="middle"),
-        Text(242, 312, "集計", anchor="middle"),
-        Text(490, 312, "見直す", anchor="middle"),
+        Text(560, 152, "読む", anchor="middle"),
+        Text(680, 318, "propose", anchor="middle"),
+        Text(560, 468, "algr proposals", anchor="middle"),
+        Text(205, 468, "algr accept", anchor="middle"),
+        Text(84, 318, "入力", anchor="middle"),
+        Text(196, 152, "判断を書く", anchor="middle"),
+        Text(388, 200, "集計"),
+        Text(250, 54, "answer / distill"),
+        Text(380, 340, "ルールを育てるループ", "b", "middle"),
+        Text(380, 358, "判断 → 提案 → ルール → 判断", anchor="middle"),
+        Text(380, 376, "（decline した提案も判断に残る）", anchor="middle"),
     ],
     legend=[HUMAN, AGENT, DATA, WRITE, READ],
 )

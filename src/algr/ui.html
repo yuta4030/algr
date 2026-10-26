@@ -258,9 +258,9 @@ main.page { display: block; }
     <p>algr 本体が持つのは、状態遷移とイベント、遷移ごとの不変条件、エージェントのプロンプトだけ。タスク管理・エージェントを動かす場所・判断の保存はアダプタの向こうに置き（いまはファイル、ローカルのプロセス、k2down）、判断はエージェントがする。本体は結果で状態を動かし、記録するだけ。</p>
     <p class="mute">なぜこうしているか（コンセプト・戦略・戦術）は<a href="https://claude.ai/artifact/JpCoJPm1kdmhNiFFtZShYG" target="_blank" rel="noopener">企画書</a>にある。</p></section>
   <section><h2>2 つの層</h2><div class="stage"><div data-diagram="layers"></div>
-    <div class="prose"><p>処理の層では、起票・実装・レビューのエージェントがタスクを流す。ルールで決まらない判断だけが人に上がる。</p>
-    <p>人の答えを含むすべての判断は記録に残る。タスクが done になると、蒸留エージェントが人の答えからルールの提案を出す。</p>
-    <p>メタプログラマーが accept した提案だけがルールになり、次のタスクでは同じ論点が起票で埋まる。使うほど人に上がる判断が減っていく。</p></div></div></section>
+    <div class="prose"><p>列が誰（人・AI・データ）、行がどの層かを表す。データ（判断・ルール・提案）は両方の層で共有する。</p>
+    <p>処理の層では、起票・実装・レビューのエージェントがルールを読んでタスクを流し、判断を書く。ルールで決まらない判断だけがクライアントに上がる。</p>
+    <p>メタの層では、蒸留エージェントが人の答えと report（判断の集計）から提案を出し、メタプログラマーが accept したものだけがルールになる。使うほど人に上がる判断が減っていく。</p></div></div></section>
   <section class="prose"><h2>人の立場</h2>
     <p>人は処理の中から抜け、外側で 2 つの立場に立つ。人に聞く判断は、文脈を一番持っている起票に寄せる。</p>
     <table class="htable"><tr><th>立場</th><th>やること</th><th>答える判断</th></tr>
@@ -274,8 +274,8 @@ main.page { display: block; }
     <p>イベントは遷移ごとに 1 つ出て、そこに hook を差し込める。hook は既定の処理のあとに呼ばれる観察者で、遷移を止めない。遷移ごとの実績は<a href="#flow">フロー</a>で見られる。</p></div></div></section>
   <section><h2>ルールを育てる（メタプログラミング）</h2><div class="stage"><div data-diagram="meta"></div>
     <div class="prose"><p>メタプログラマーは処理の中には入らず、ルールとゲートを通して何を自動で通すかを決める。</p>
-    <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から、足す・外す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
-    <p><b>ルールを見直す。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。<code>k2down report</code> で、一度も当たらないルール（落とす候補）、外れや異議の多いルール（書き直す候補）、ぶつかる組を見る。</p>
+    <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から足す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
+    <p><b>見直しも提案で届く。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。蒸留エージェントは <code>k2down report</code> の落とす候補（一度も当たらない）、書き直す候補（外れや異議が多い）、ぶつかる組から、外す提案と言い直しの提案も出す。メタプログラマーは report を読み込まなくても、提案を決めればよい。</p>
     <p><b>ゲートを持つ。</b>マージのゲート（<code>approved</code>）、失敗からのやり直し（<code>algr reopen</code>）、公開 IF の境界もメタプログラマーの持ち物。</p>
     <p class="mute">ルールの変更は rules.json の差分として PR に載る。そのマージを人の確認とする。</p></div></div></section>
   <section class="prose"><h2>ID</h2><table class="htable"><tr><th>対象</th><th>形</th><th>振るところ</th></tr>
