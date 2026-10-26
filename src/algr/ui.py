@@ -17,7 +17,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-from algr import flow, stats
+from algr import diagrams, flow, stats
 from algr.agents import ROLE_HELP
 from algr.engine import Engine
 from algr.model import Role, State, Task
@@ -241,7 +241,7 @@ def history(engine: Engine) -> dict[str, Any]:
 def help_page() -> dict[str, Any]:
     """ヘルプのリファレンス。状態・遷移・不変条件・役・プロンプト・コマンドをコードから組み立てる。
 
-    大きく変わらない説明（コンセプト、人の立場、図、ID）は ui.html にベタ書きしている。
+    図は diagrams.py のデータから書き出す。大きく変わらない説明（コンセプト、人の立場、ID）は ui.html にベタ書きしている。
     """
     from algr.cli import STANCES, commands  # cli が ui を読むので、ここで読む
 
@@ -261,6 +261,7 @@ def help_page() -> dict[str, Any]:
         ],
         "roles": [{"role": str(r), **ROLE_HELP[r], "prompt": (PROMPTS / f"{r}.md").read_text(encoding="utf-8")} for r in Role],
         "common_prompt": (PROMPTS / "common.md").read_text(encoding="utf-8"),
+        "diagrams": diagrams.svgs(),
         "commands": commands(),
     }
 

@@ -6,7 +6,7 @@ import threading
 import urllib.request
 from pathlib import Path
 
-from algr import flow, ui
+from algr import diagrams, flow, ui
 from algr.agents import ROLE_HELP
 from algr.cli import STANCES, commands
 from algr.model import Role, State
@@ -32,6 +32,27 @@ def test_every_state_event_role_and_invariant_is_described():
     assert all(f.__doc__ for checks in flow.INVARIANTS.values() for f in checks)
     names = {c["name"] for c in commands()}
     assert {name for ops in STANCES.values() for name in ops} <= names
+
+
+def test_flow_diagram_draws_every_state_and_transition():
+    d = diagrams.FLOW_DIAGRAM
+    assert {str(s) for s in State} <= {n.id for n in d.nodes}
+    drawn: dict[str, set[str]] = {}
+    for e in d.edges:
+        if e.event:
+            assert flow.TRANSITIONS[e.event][1] == State(e.dst), e.event
+            drawn.setdefault(e.event, set()).update(e.src)
+    # 遷移元は、同じイベントの矢印をすべて合わせて TRANSITIONS と同じ
+    assert drawn == {name: {str(s) for s in sources} for name, (sources, _) in flow.TRANSITIONS.items()}
+
+
+def test_diagram_nodes_stay_inside_the_picture():
+    for d in diagrams.DIAGRAMS:
+        assert len({n.id for n in d.nodes}) == len(d.nodes), d.id
+        for n in d.nodes:
+            assert 0 <= n.x - n.w / 2 and n.x + n.w / 2 <= d.width, (d.id, n.id)
+            assert 40 <= n.y - n.h / 2 and n.y + n.h / 2 <= d.height - 30, (d.id, n.id)
+        assert d.kinds_used() <= {diagrams.HUMAN, diagrams.AGENT, diagrams.DATA, diagrams.STATE, diagrams.PLAIN}, d.id
 
 
 def test_readme_event_table_matches_the_code():
@@ -76,3 +97,5 @@ def test_help_is_served_from_the_code(repo):
     assert ready["invariants"] == ["未決事項がゼロであること。", "ルールで埋めた未決事項には、従ったルールの ID が付いていること（判断には根拠を付ける）。"]
     assert [r["role"] for r in h["roles"]] == [str(r) for r in Role]
     assert all(r["prompt"].startswith("# 役：") for r in h["roles"])
+    assert set(h["diagrams"]) == {"layers", "flow", "meta"}
+    assert all(svg.startswith('<svg class="dg"') for svg in h["diagrams"].values())
