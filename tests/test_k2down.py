@@ -48,7 +48,7 @@ def test_proposals_become_rules_when_accepted(store):
     assert store.proposals() == []
     assert [(r.id, r.text) for r in store.rules()] == [("R001", "db: sqlite")]  # 内部ノードは除く
     assert calls(store)[0] == ["propose", "add", "db: sqlite", "--decision", "I1-3", "--json"]
-    with pytest.raises(K2downError, match="unknown proposal: P-002"):
+    with pytest.raises(K2downError, match=r"^accept: unknown proposal: P-002$"):  # --json のエラーは文言だけにする
         store.accept("P-002")
 
 
@@ -57,9 +57,9 @@ def test_retire_proposal_retires_the_rule_when_accepted(store):
     store.accept("P-001")
     assert store.propose_retire("R001", "db: postgres\nとぶつかる", "I2-1") == "P-002"
     assert store.propose_retire("R001", "again", "I3-1") == "P-002"  # 冪等
-    # k2down は外す理由を出どころ（source）に持つ。アダプタは reason に戻して返す
     assert store.proposals() == [{"id": "P-002", "kind": "retire", "rule_id": "R001", "decision": "I2-1", "reason": "db: postgres とぶつかる"}]
     assert store.rules() != []  # accept までは外れない
+    assert calls(store)[2] == ["propose", "retire", "R001", "--decision", "I2-1", "--reason", "db: postgres とぶつかる", "--json"]
     assert store.accept("P-002") == "R001"
     assert calls(store)[-1] == ["accept", "P-002", "--json"]
     assert store.rules() == [] and store.proposals() == []
@@ -75,13 +75,13 @@ def test_report_keeps_only_what_distill_needs(store):
     }  # fmt: skip
     # report から出す外す提案は、元になった決断 ID を持たない
     store.propose_retire("R001", "一度も当たらない", "")
-    assert calls(store)[-1] == ["propose", "retire", "R001", "--source", "一度も当たらない", "--json"]
+    assert calls(store)[-1] == ["propose", "retire", "R001", "--reason", "一度も当たらない", "--json"]
     assert store.proposals()[0]["decision"] == ""
 
 
 def test_old_k2down_is_refused_once_at_the_first_call(store, monkeypatch):
-    monkeypatch.setenv("FAKE_K2DOWN_VERSION", "k2down 0.2.4")
-    with pytest.raises(K2downError, match=r"k2down 0.3.0 or later is required \(found k2down 0.2.4\)"):
+    monkeypatch.setenv("FAKE_K2DOWN_VERSION", "k2down 0.3.0")
+    with pytest.raises(K2downError, match=r"k2down 0.4.0 or later is required \(found k2down 0.3.0\)"):
         store.escalate("I1-1", "p", "no_match")
     monkeypatch.setenv("FAKE_K2DOWN_VERSION", "k2down 0.10.0")
     store.escalate("I1-1", "p", "no_match")
