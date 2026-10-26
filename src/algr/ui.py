@@ -24,8 +24,6 @@ from algr.model import Role, State, Task
 
 PAGE = Path(__file__).with_name("ui.html")
 PROMPTS = Path(__file__).with_name("prompts")
-# コンセプト・戦略・戦術の企画書。ヘルプはなぜこうしているかを書き写さず、ここへ案内する
-CONCEPT_URL = "https://claude.ai/artifact/JpCoJPm1kdmhNiFFtZShYG"
 
 # 主経路。needs-decision と failed は、主経路のどこで止まっているかで見せる
 STAGES = (State.INTAKE, State.READY, State.IN_PROGRESS, State.REVIEW, State.DONE)
@@ -241,11 +239,13 @@ def history(engine: Engine) -> dict[str, Any]:
 
 
 def help_page() -> dict[str, Any]:
-    """algr 自身の説明。文章は書き起こさず、状態・遷移・不変条件・役・プロンプト・コマンドをコードから組み立てる。"""
+    """ヘルプのリファレンス。状態・遷移・不変条件・役・プロンプト・コマンドをコードから組み立てる。
+
+    大きく変わらない説明（コンセプト、人の立場、図、ID）は ui.html にベタ書きしている。
+    """
     from algr.cli import STANCES, commands  # cli が ui を読むので、ここで読む
 
     return {
-        "concept": CONCEPT_URL,
         "stances": [{"name": name, "commands": list(names)} for name, names in STANCES.items()],
         "states": [{"state": str(s), "help": flow.STATE_HELP[s]} for s in State],
         "events": [
