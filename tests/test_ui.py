@@ -2,6 +2,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from conftest import run_until
@@ -132,3 +133,38 @@ def test_snapshot_shows_distill_waiting_for_capacity(engine, monkeypatch):
     task = engine.request_distill("DB は Postgres", topic="db")
     [run] = ui.snapshot(engine)["distills"]
     assert (run["state"], run["task_id"], [q["id"] for q in run["read"]]) == ("waiting", task.id, ["I1-1"])
+
+
+def test_review_shows_what_changed_and_why_each_proposal(gated):
+    gated.decisions.add("auth: OAuth")
+    gated.create("ask", questions=[{"topic": "db", "text": "Where?"}])
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "needs-decision")
+    gated.resolve("I1", {"I1-1": "sqlite"})
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "approved")
+    gated.merge("I1")
+    run_until(gated, lambda: not gated.tasks.get("I1").jobs)
+
+    r = ui.review(gated)
+    assert (r["current"]["done"], r["current"]["asked"], r["previous"]["asked"]) == (1, 1, 0)
+    [p] = r["proposals"]
+    assert (p["id"], p["job"]) == ("P001", "I1.distill.5")
+    assert p["evidence"] == {"topic": "db", "answers": [{"id": "I1-1", "text": "Where?", "answer": "sqlite", "by": "human"}]}
+    assert [(x["id"], x["uses"]) for x in r["rules"]] == [("R001", [])]
+    assert r["distill"] | {"failed": None} == {"runs": 1, "proposals": 1, "failed": None, "waiting": 0}
+    # 見直しを終えたあとは、その時刻から数える
+    assert ui.review(gated, datetime.now(UTC) + timedelta(hours=1))["current"]["done"] == 0
+
+
+def test_review_takes_the_last_review_time_from_the_page(engine):
+    httpd = ui.server(engine, 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}/api/review"
+    try:
+        with urllib.request.urlopen(base + "?since=2026-01-01T00:00:00%2B00:00") as res:
+            assert json.load(res)["since"] == "2026-01-01T00:00:00+00:00"
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(base + "?since=yesterday")
+        assert e.value.code == 400
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

@@ -342,8 +342,8 @@ class Engine:
             roles.append(Role.DISTILL)
         return roles
 
-    def _report(self) -> dict[str, Any]:
-        """判断ストアの手入れの候補。report() は任意のメソッドで、無いか失敗したら空で蒸留を走らせる。"""
+    def report(self) -> dict[str, Any]:
+        """判断ストアの手入れの候補。report() は任意のメソッドで、無いか失敗したら空を返す（蒸留はそのまま走らせる）。"""
         report = getattr(self.decisions, "report", None)
         if report is None:
             return {}
@@ -362,7 +362,7 @@ class Engine:
             if role in task.jobs or self.executor.capacity() <= 0:
                 continue
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
-            report = self._report() if role == Role.DISTILL else None
+            report = self.report() if role == Role.DISTILL else None
             job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
             record: dict[str, Any] = {"job_started": job.id, "task_id": task.id, "role": str(role)}
             if role == Role.DISTILL:

@@ -16,6 +16,7 @@ from itertools import pairwise
 from pathlib import Path
 from statistics import median
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from algr import diagrams, flow, stats
 from algr.agents import ROLE_HELP
@@ -279,6 +280,60 @@ def history(engine: Engine) -> dict[str, Any]:
     }
 
 
+def _window(records: list[dict[str, Any]], start: datetime, end: datetime) -> dict[str, Any]:
+    """期間に done になったタスクの指標と、期間に人に上がった回数。"""
+    done = {r["task_id"] for r in records if r.get("name") == "task.done" and start <= _ts(r["ts"]) < end}
+    asked = sum(1 for r in records if r.get("name") in stats.ASKED_EVENTS and start <= _ts(r["ts"]) < end)
+    return {**stats.summarize([r for r in records if r.get("task_id") in done]), "asked": asked}
+
+
+def review(engine: Engine, since: datetime | None = None) -> dict[str, Any]:
+    """メタの層の見直し。前回の見直し（既定は 7 日前）からの変化と、決めることの根拠をまとめる。
+
+    前回の見直しの時刻は画面（ブラウザ）が持ち、ここには毎回渡す。GUI もコアも、見直しの状態は持たない。
+    """
+    records = stats.load(engine.event_log) if engine.event_log else []
+    tasks = engine.tasks.list()
+    now = datetime.now(UTC)
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    since = min(since or now - timedelta(days=7), now)
+    rules = [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]
+    proposals = engine.decisions.proposals()
+    usage = rule_usage(tasks, rules, proposals)
+    runs = distills(records, tasks, proposals)
+    made_by = {p["id"]: r["job"] for r in runs for p in r["proposals"]}
+    report = engine.report()
+    checked = {r["id"]: r for r in report.get("rules", [])}
+    by_topic = {c["topic"]: c for c in usage["candidates"]}
+    topic_of = {q.id: q.topic for t in tasks for q in t.questions}
+    uses = {r["id"]: len(r["uses"]) for r in usage["rules"]}
+
+    def evidence(p: dict[str, Any]) -> dict[str, Any]:
+        if p["kind"] == "retire":
+            return {"rule": next((r for r in rules if r["id"] == p["rule_id"]), None), "uses": uses.get(p["rule_id"], 0), "report": checked.get(p["rule_id"])}
+        topic = topic_of.get(p.get("decision", ""), "")
+        examples = [e for e in by_topic.get(topic, {}).get("examples", []) if e["by"] == "human"] if topic else []
+        return {"topic": topic, "answers": examples or ([{"id": p["decision"], **p["question"]}] if p.get("question") else [])}
+
+    in_window = [r for r in runs if r["start"] and _ts(r["start"]) >= since]
+    return {
+        "now": now.isoformat(timespec="seconds"),
+        "since": since.isoformat(timespec="seconds"),
+        "current": _window(records, since, now),
+        "previous": _window(records, since - (now - since), since),
+        "proposals": [{**p, "job": made_by.get(p["id"]), "evidence": evidence(p)} for p in usage["proposals"]],
+        "rules": [{**r, "report": checked.get(r["id"])} for r in usage["rules"]],
+        "candidates": [c for c in usage["candidates"] if c["human"] or c["agent"]],
+        "distill": {
+            "runs": len(in_window),
+            "proposals": len({p["id"] for r in in_window for p in r["proposals"]}),
+            "failed": [r for r in in_window if r["state"] == "failed"],
+            "waiting": sum(1 for r in runs if r["state"] in ("waiting", "running")),
+        },
+    }
+
+
 def help_page() -> dict[str, Any]:
     """ヘルプのリファレンス。状態・遷移・不変条件・役・プロンプト・コマンドをコードから組み立てる。
 
@@ -323,15 +378,23 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        url = urlparse(self.path)
         # ローカル専用。ほかの名前で来たリクエスト（DNS rebinding）は受けない
         if self.headers.get("Host") not in self.hosts:
             self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain")
-        elif self.path == "/":
+        elif url.path == "/":
             self._send(HTTPStatus.OK, PAGE.read_bytes(), "text/html; charset=utf-8")
-        elif self.path in ("/api/snapshot", "/api/history", "/api/help"):
-            build = {"/api/snapshot": snapshot, "/api/history": history}.get(self.path)
-            body = json.dumps(build(self.engine) if build else help_page(), ensure_ascii=False).encode("utf-8")
-            self._send(HTTPStatus.OK, body, "application/json; charset=utf-8")
+        elif url.path in ("/api/snapshot", "/api/history", "/api/help", "/api/review"):
+            if url.path == "/api/review":
+                try:
+                    since = _ts(parse_qs(url.query)["since"][0]) if "since" in parse_qs(url.query) else None
+                except ValueError:
+                    return self._send(HTTPStatus.BAD_REQUEST, b"bad since", "text/plain")
+                data = review(self.engine, since)
+            else:
+                build = {"/api/snapshot": snapshot, "/api/history": history}.get(url.path)
+                data = build(self.engine) if build else help_page()
+            self._send(HTTPStatus.OK, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
         else:
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
