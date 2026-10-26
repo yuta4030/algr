@@ -244,7 +244,7 @@ model = "haiku"
 
 ### k2down
 
-判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。
+判断ストアの標準は [k2down](https://github.com/yuta4030/k2down) です（`uv tool install git+https://github.com/yuta4030/k2down`）。提案（`propose`）を持つ v0.3 以降が要ります。algr は最初に k2down を呼ぶときに `k2down --version` で確かめ、古ければエラーにします。
 
 ```toml
 [adapters.decisions]

@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from typing import Any
 
 from algr.adapters import REPORT_KEYS, AdapterError, Context, Rule
+
+# 提案（propose / proposals / accept / decline）と report --json の形を使う
+MIN_VERSION = (0, 3, 0)
 
 
 class K2downError(AdapterError):
@@ -39,9 +43,24 @@ class K2down:
     ) -> None:
         self.dir = ctx.path(dir)
         self.command = list(command) if command else ["k2down"]
+        self._checked = False
+
+    def _check_version(self) -> None:
+        """最初に k2down を呼ぶときに 1 度だけ、MIN_VERSION 以降かを確かめる。"""
+        if self._checked:
+            return
+        out = self._call([*self.command, "--version"], "--version")
+        found = tuple(int(n) for n in re.findall(r"\d+", out.split()[-1])[:3]) if out else ()
+        if found < MIN_VERSION:
+            need = ".".join(map(str, MIN_VERSION))
+            raise K2downError(f"k2down {need} or later is required (found {out or 'unknown'}): uv tool install --force git+https://github.com/yuta4030/k2down")
+        self._checked = True
 
     def _run(self, *args: str) -> str:
-        argv = [*self.command, "--dir", str(self.dir), *args]
+        self._check_version()
+        return self._call([*self.command, "--dir", str(self.dir), *args], args[0])
+
+    def _call(self, argv: list[str], name: str) -> str:
         # Windows では Python の標準出力が既定で cp932 になるので、k2down に UTF-8 で出させる
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         try:
@@ -49,7 +68,7 @@ class K2down:
         except FileNotFoundError as e:
             raise K2downError(f"k2down is not installed ({self.command[0]}): uv tool install git+https://github.com/yuta4030/k2down") from e
         if proc.returncode != 0:
-            raise K2downError(f"{' '.join(args[:1])}: {proc.stderr.strip() or proc.stdout.strip()}")
+            raise K2downError(f"{name}: {proc.stderr.strip() or proc.stdout.strip()}")
         return proc.stdout.strip()
 
     def rules(self) -> list[Rule]:

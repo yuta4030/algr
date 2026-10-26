@@ -1,10 +1,14 @@
 """テスト用の k2down の CLI。algr の K2down アダプタが使う部分だけを真似て、呼ばれた引数を calls.jsonl に残す。"""
 
 import json
+import os
 import sys
 from pathlib import Path
 
 argv = sys.argv[1:]
+if argv == ["--version"]:
+    print(os.environ.get("FAKE_K2DOWN_VERSION", "k2down 0.3.0"))
+    sys.exit(0)
 assert argv[0] == "--dir"
 store = Path(argv[1])
 command, args = argv[2], argv[3:]
