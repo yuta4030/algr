@@ -18,7 +18,17 @@ from pathlib import Path
 from typing import Any
 
 from algr import flow
-from algr.adapters import Conflict, DecisionStore, ExecutorAdapter, Notifier, RunState, RunStatus, TaskAdapter, TriggerAdapter
+from algr.adapters import (
+    AdapterError,
+    Conflict,
+    DecisionStore,
+    ExecutorAdapter,
+    Notifier,
+    RunState,
+    RunStatus,
+    TaskAdapter,
+    TriggerAdapter,
+)
 from algr.agents import DistillResult, ImplementResult, IntakeResult, ResultError, ReviewResult, job_input, parse
 from algr.config import Config
 from algr.model import Event, Job, Question, Role, State, Task
@@ -332,6 +342,17 @@ class Engine:
             roles.append(Role.DISTILL)
         return roles
 
+    def _report(self) -> dict[str, Any]:
+        """判断ストアの手入れの候補。report() は任意のメソッドで、無いか失敗したら空で蒸留を走らせる。"""
+        report = getattr(self.decisions, "report", None)
+        if report is None:
+            return {}
+        try:
+            return report()
+        except AdapterError as e:
+            self._log({"report_error": str(e), "ts": _now()})
+            return {}
+
     def _start_jobs(self, task: Task) -> None:
         """いま要るのに走っていないジョブを、実行アダプタの capacity の範囲で起動する。
 
@@ -341,7 +362,8 @@ class Engine:
             if role in task.jobs or self.executor.capacity() <= 0:
                 continue
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
-            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)))
+            report = self._report() if role == Role.DISTILL else None
+            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
             if role == Role.DISTILL:
                 task.to_distill = []
             task.jobs[role] = job.id

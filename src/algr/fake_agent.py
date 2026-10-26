@@ -51,8 +51,11 @@ def review(task: dict[str, Any], rules: list[dict[str, str]]) -> dict[str, Any]:
     return {"approved": bool(task["pr"]) and not objections, "objections": objections}
 
 
-def distill(questions: list[dict[str, Any]], rules: list[dict[str, str]]) -> dict[str, Any]:
+def distill(questions: list[dict[str, Any]], rules: list[dict[str, str]], report: dict[str, Any] | None = None) -> dict[str, Any]:
     proposed, retire = [], []
+    # 一度も当たっていないルールは外す提案にする（report から出す提案は source を持たない）
+    for rule_id in (report or {}).get("drop_candidates", []):
+        retire.append({"rule_id": rule_id, "reason": "report: 一度も当たっていない"})
     for q in questions:
         if not q["topic"] or q["answer"] is None:
             continue
@@ -76,7 +79,7 @@ def run(job: dict[str, Any]) -> dict[str, Any]:
     if role == "review":
         return review(task, rules)
     if role == "distill":
-        return distill(job["input"].get("questions", []), rules)
+        return distill(job["input"].get("questions", []), rules, job["input"].get("report"))
     raise SystemExit(f"unknown role: {role}")
 
 

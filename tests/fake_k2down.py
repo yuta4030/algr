@@ -48,7 +48,9 @@ elif command == "apply" and "R404" in args:
     sys.exit(1)
 elif command == "propose":
     kind, target = args[0], args[1]
-    proposal = {"kind": kind, ("rule" if kind == "add" else "rule_id"): target, "decision": option("--decision")}
+    proposal = {"kind": kind, ("rule" if kind == "add" else "rule_id"): target}
+    if option("--decision") is not None:
+        proposal["decision"] = option("--decision")
     if option("--source") is not None:
         proposal["source"] = option("--source")
     same = next((p for p in proposals["proposals"] if p["kind"] == kind and p.get("rule", p.get("rule_id")) == target), None)
@@ -75,3 +77,7 @@ elif command == "decline":
     proposals["proposals"].remove(pending(args[0]))
     proposals_file.write_text(json.dumps(proposals), encoding="utf-8")
     print(f"declined {args[0]}")
+elif command == "report":
+    rows = [{"id": r["id"], "rule": r["rule"], "applied": 0, "hit": 0, "miss": 0, "rejected": 0, "decisions": 12} for r in rules]
+    print(json.dumps({"rules": rows, "drop_candidates": [r["id"] for r in rows], "rewrite_candidates": [], "conflict_candidates": [],
+                      "declined_proposals": [], "daily": [{"day": "2026-10-26"}], "new_rule_candidates": []}))

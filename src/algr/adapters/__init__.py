@@ -111,9 +111,18 @@ class Rule:
     text: str
 
 
+# 判断ストアの report() が返すキー。蒸留に渡すのはこれだけ（日ごとの数などは渡さない）
+REPORT_KEYS = ("rules", "drop_candidates", "rewrite_candidates", "conflict_candidates", "declined_proposals")
+
+
 @runtime_checkable
 class DecisionStore(Protocol):
-    """ルールの提示、判断の記録と集計。操作は k2down の CLI に合わせてある。"""
+    """ルールの提示、判断の記録と集計。操作は k2down の CLI に合わせてある。
+
+    任意で report() -> dict を持てる。持っていれば、蒸留エージェントにルールの手入れの候補として渡す。
+    形は REPORT_KEYS のキーを持つ dict（k2down report --json の一部）：ルールごとの数（rules: [{"id", "applied", "hit", "miss", "rejected", "decisions"}]）、
+    落とす候補（drop_candidates）、書き直す候補（rewrite_candidates）、ぶつかる組（conflict_candidates）、却下された提案（declined_proposals）。
+    """
 
     def rules(self) -> list[Rule]: ...
 
@@ -128,7 +137,7 @@ class DecisionStore(Protocol):
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None: ...
 
     def propose(self, rule: str, source: str) -> str:
-        """1 行ルールの追加を提案し、提案の ID を返す。マージ（人の確認）をもってルールになる。同じ提案は二重に出さない。"""
+        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。マージ（人の確認）をもってルールになる。同じ提案は二重に出さない。"""
         ...
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
@@ -139,7 +148,7 @@ class DecisionStore(Protocol):
         """まだ受け入れも却下もされていない提案。
 
         足す提案は {"id", "kind": "add", "rule", "decision"}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
-        decision は propose / propose_retire の source に渡した決断 ID。
+        decision は propose / propose_retire の source に渡した決断 ID。report の候補から出した提案では空。
         """
         ...
 

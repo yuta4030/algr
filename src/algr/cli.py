@@ -102,9 +102,10 @@ def _task_text(task: Task) -> str:
 
 
 def _proposal_text(p: dict[str, str]) -> str:
+    origin = p["decision"] or "report"
     if p["kind"] == "retire":
-        return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {p['decision']})"
-    return f"{p['id']} {p['rule']} (from {p['decision']})"
+        return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {origin})"
+    return f"{p['id']} {p['rule']} (from {origin})"
 
 
 def _question(value: str) -> dict[str, str]:

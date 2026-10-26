@@ -65,6 +65,20 @@ def test_retire_proposal_retires_the_rule_when_accepted(store):
     assert store.rules() == [] and store.proposals() == []
 
 
+def test_report_keeps_only_what_distill_needs(store):
+    assert store.report() == {}  # rules.json がまだ無ければ k2down を呼ばない
+    store.propose("db: sqlite", "I1-3")
+    store.accept("P-001")
+    assert store.report() == {
+        "rules": [{"id": "R001", "applied": 0, "hit": 0, "miss": 0, "rejected": 0, "decisions": 12}],
+        "drop_candidates": ["R001"], "rewrite_candidates": [], "conflict_candidates": [], "declined_proposals": [],
+    }  # fmt: skip
+    # report から出す外す提案は、元になった決断 ID を持たない
+    store.propose_retire("R001", "一度も当たらない", "")
+    assert calls(store)[-1] == ["propose", "retire", "R001", "--source", "一度も当たらない", "--json"]
+    assert store.proposals()[0]["decision"] == ""
+
+
 def test_cli_errors_surface(store):
     with pytest.raises(K2downError, match="unknown rule: R404"):
         store.apply("I1-1", "p", ["R404"])

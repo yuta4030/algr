@@ -152,14 +152,18 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}` |
 | `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
-| `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"}], "retire"?: [{"rule_id", "reason", "source"}]}` |
+| `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
 別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
 
 `objections` は判断への異議で、人に回します。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
 ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
-レビューには人が決めた未決事項の ID（`settled`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
+レビューには人が決めた未決事項の ID（`settled`）、蒸留には判断ストアの手入れの候補（`report`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
+
+蒸留は人の答えのほか、`report` の落とす候補（一度も当たらないルール）・書き直す候補（外れや異議の多いルール）・ぶつかる組から、
+外す提案と言い直し（新しいルールと外す提案の対）を出します。`report` から出した提案は、元になった決断 ID（`source`）を持ちません。
+判断ストアが `report()` を持たなければ、`report` は空です（k2down とフェイクは持っています）。
 
 結果の形が違えば、ジョブは失敗として扱います。形の定義は `src/algr/agents.py` にあります。
 
@@ -250,7 +254,7 @@ command = ["k2down"]                    # 省略時。uvx で動かすなら ["u
 ```
 
 蒸留エージェントの提案は `k2down propose` で k2down の proposals.json に積み、`algr accept` で `k2down accept`、`algr decline` で `k2down decline` を呼びます。
-受け入れも却下も k2down の usage.jsonl に残ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
+受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。k2down の外す提案には理由の項目が無いので、理由は出どころ（`--source`）に入れます。
 store を git で管理するなら、k2down のロック（`.k2down.lock`）を `.gitignore` に入れてください。
 rules.json の差分を PR にしてマージすることを、人の確認とします。
 

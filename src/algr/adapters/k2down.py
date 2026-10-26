@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from typing import Any
 
-from algr.adapters import AdapterError, Context, Rule
+from algr.adapters import REPORT_KEYS, AdapterError, Context, Rule
 
 
 class K2downError(AdapterError):
@@ -22,6 +23,11 @@ class K2downError(AdapterError):
 
 def _one_line(text: str) -> str:
     return " ".join(text.split())
+
+
+def _decision(source: str) -> list[str]:
+    """提案の元になった決断 ID。report の候補から出した提案には無い。"""
+    return ["--decision", source] if source else []
 
 
 class K2down:
@@ -69,14 +75,21 @@ class K2down:
             args += ["--predicted", _one_line(predicted)]
         self._run(*args)
 
+    def report(self) -> dict[str, Any]:
+        if not (self.dir / "rules.json").exists():
+            return {}
+        data = json.loads(self._run("report", "--json"))
+        rules = [{k: r[k] for k in ("id", "applied", "hit", "miss", "rejected", "decisions")} for r in data.get("rules", [])]
+        return {**{k: data.get(k, []) for k in REPORT_KEYS}, "rules": rules}
+
     # --- 提案（k2down の propose / proposals / accept / decline） ---------------
 
     def propose(self, rule: str, source: str) -> str:
-        return json.loads(self._run("propose", "add", _one_line(rule), "--decision", source, "--json"))["id"]
+        return json.loads(self._run("propose", "add", _one_line(rule), *_decision(source), "--json"))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
         # k2down の外す提案には理由の項目が無いので、ID で表せない出どころ（--source）に理由を入れる
-        args = ["propose", "retire", rule_id, "--decision", source, "--source", _one_line(reason), "--json"]
+        args = ["propose", "retire", rule_id, *_decision(source), "--source", _one_line(reason), "--json"]
         return json.loads(self._run(*args))["id"]
 
     def proposals(self) -> list[dict[str, str]]:
@@ -84,6 +97,7 @@ class K2down:
             return []
         out = []
         for p in json.loads(self._run("proposals", "--json"))["proposals"]:
+            p.setdefault("decision", "")
             if p["kind"] == "retire":
                 p["reason"] = p.pop("source", "")
             out.append(p)
