@@ -165,51 +165,53 @@ def render(d: Diagram) -> str:
     return "".join(out)
 
 
-# --- 図 1：全体（列が人・AI・データ、行が処理の層とメタの層） ---------------------------
+# --- 図 1：2 つの層（全体） -----------------------------------------------------
 
 LAYERS = Diagram(
     id="layers",
-    title="列が人・AI・データ、行が処理の層とメタの層。データは両方の層で共有する",
+    title="処理の層でタスクが流れ、メタの層で判断がルールに育つ",
     width=760,
-    height=530,
-    bands=[
-        Band(80, 160, "処理の層（STP）→ 図 2", w=488),
-        Band(276, 164, "メタの層（アルゴリズミック）→ 図 3", w=488),
-        Band(80, 360, "データ", x=528, w=220),
-    ],
+    height=600,
+    bands=[Band(56, 200, "処理の層（STP）→ 図 2"), Band(272, 104, "データ"), Band(392, 160, "メタの層（アルゴリズミック）→ 図 3")],
     nodes=[
-        Node("client", 120, 165, 164, "クライアント", "依頼し、問いに答える", HUMAN, 64),
-        Node("agents", 382, 165, 200, "起票・実装・レビュー", "ルールで判断を埋めて流す", AGENT, 64),
-        Node("meta", 120, 355, 164, "メタプログラマー", "accept・merge・reopen", HUMAN, 64),
-        Node("distill", 382, 355, 200, "蒸留エージェント", "人の答えと report から提案", AGENT, 64),
-        Node("decisions", 640, 125, 160, "判断", "人の答えも、AI の判断も", DATA),
-        Node("rules", 640, 210, 160, "ルール", "rules.json", DATA),
-        Node("report", 640, 300, 170, "k2down report", "落とす／書き直す候補", PLAIN, 48),
-        Node("proposals", 640, 380, 160, "提案", "足す・外す", DATA),
+        Node("client", 380, 104, 520, "クライアント", "algr new で依頼し、needs-decision で答える", HUMAN, 48),
+        Node("intake", 180, 200, 160, "起票エージェント", "intake：未決事項を埋める", AGENT),
+        Node("implement", 380, 200, 160, "実装エージェント", "in-progress：PR を出す", AGENT),
+        Node("review", 580, 200, 160, "レビューエージェント", "review：PR を確かめる", AGENT),
+        Node("decisions", 320, 320, 440, "判断", "人の答え・方針も、ルールに従った判断も（k2down）", DATA, 60),
+        Node("rules", 660, 320, 140, "ルール", "rules.json", DATA, 60),
+        Node("distill", 320, 460, 180, "蒸留エージェント", "done のあと：提案を出す", AGENT),
+        Node("meta", 560, 460, 180, "メタプログラマー", "accept・merge・reopen", HUMAN),
     ],
     edges=[
-        Edge("M202 155H282"),  # 依頼・答え
-        Edge("M282 177H202"),  # 問い（needs-decision）
-        Edge("M482 140H560", WRITE),  # エージェント → 判断
-        Edge("M560 210H420V197", READ),  # ルール → エージェント
-        Edge("M720 125H744V300H725"),  # 判断 → report
-        Edge("M555 300H420V323"),  # report → 蒸留
-        Edge("M482 365H560"),  # 蒸留 → 提案
-        Edge("M640 408V470H120V387"),  # 提案 → メタプログラマー
-        Edge("M202 345H232V258H600V238"),  # accept → ルール
+        Edge("M160 128V172"),  # 依頼・答え
+        Edge("M200 172V128"),  # needs-decision
+        Edge("M380 172V128"),  # 想定外の判断
+        Edge("M580 172V128"),  # 異議
+        Edge("M24 214H100"),  # CI の失敗・派生タスク
+        Edge("M260 200H300"),
+        Edge("M460 200H500"),
+        Edge("M180 228V290", WRITE),
+        Edge("M380 228V290", WRITE),
+        Edge("M520 228V290", WRITE),
+        Edge("M660 290V256", READ),  # ルール → 処理の層
+        Edge("M320 350V432"),  # 判断 → 蒸留（人の答えと report）
+        Edge("M410 460H470"),  # 提案
+        Edge("M650 460H700V350"),  # accept
     ],
     texts=[
-        Text(120, 66, "人", "q b", "middle"),
-        Text(382, 66, "AI のエージェント", "q b", "middle"),
-        Text(638, 66, "データ", "q b", "middle"),
-        Text(242, 147, "依頼・答え", anchor="middle"),
-        Text(242, 194, "問い", anchor="middle"),
-        Text(521, 132, "書く", anchor="middle"),
-        Text(490, 203, "入力", anchor="middle"),
-        Text(486, 292, "候補を読む", anchor="middle"),
-        Text(521, 357, "提案", anchor="middle"),
-        Text(380, 463, "algr proposals", anchor="middle"),
-        Text(330, 251, "algr accept", anchor="middle"),
+        Text(24, 184, "CI の失敗・"),
+        Text(24, 200, "派生タスク"),
+        Text(152, 154, "依頼・答え", anchor="end"),
+        Text(208, 154, "needs-decision"),
+        Text(388, 154, "想定外の判断"),
+        Text(588, 154, "異議"),
+        Text(280, 192, "ready", anchor="middle"),
+        Text(480, 192, "PR", anchor="middle"),
+        Text(652, 280, "毎ジョブの入力", anchor="end"),
+        Text(328, 396, "人の答えと report を読む"),
+        Text(440, 452, "提案", anchor="middle"),
+        Text(708, 396, "accept"),
     ],
     legend=[HUMAN, AGENT, DATA, WRITE, READ],
 )
