@@ -302,7 +302,7 @@ main.page { display: block; }
 <main class="view" id="view-now">
   <div>
     <section><h2 class="big">あなたに聞きたいこと <span class="n human" id="ask-n">0</span></h2>
-      <p class="lead mute">ルールで決まらなかった点だけが届きます。答えると、聞いた役（起票・実装・レビュー）が答えを持って走り直します。</p><div id="asks"></div></section>
+      <p class="lead mute">ルールで決まらなかった点と、通せなかった依頼だけが届きます。答えると、聞いた役（起票・実装・レビュー）が答えを持って走り直します。</p><div id="asks"></div></section>
     <section><div class="shead"><h2 class="big">頼んだこと</h2><span class="mute" id="active-n"></span><span class="hint mono mute">algr new "..."</span></div><div class="rows" id="rows"></div></section>
   </div>
   <div>
@@ -338,7 +338,7 @@ main.page { display: block; }
   <section class="prose"><h2>立場</h2>
     <p>処理の外側に 2 つの立場がある。処理の層の問いにはクライアントが、メタの層（ルール）にはメタプログラマーが答える。立場を人が埋めるか、その横の AI が埋めるかは algr は区別しない。</p>
     <table class="htable"><tr><th>立場</th><th>やること</th><th>答える判断</th></tr>
-      <tr><td>クライアント</td><td>やりたいことをまとめ、タスクに分けて順番を決める。あとは判断待ちだけに答える</td><td>タスクの問いすべて（要望したものを出してよいか、マージしてよいか、公開 IF を変えてよいかも含む）</td></tr>
+      <tr><td>クライアント</td><td>やりたいことをまとめ、タスクに分けて順番を決める。あとは判断待ちに答え、通せなかった依頼（<code>failed</code>）をやり直すかを決める</td><td>タスクの問いすべて（要望したものを出してよいか、マージしてよいか、公開 IF を変えてよいかも含む）</td></tr>
       <tr><td>メタプログラマー</td><td>タスクには答えない。クライアントの答えの記録、<code>algr stats</code>、report を見てルールを直す</td><td>どの判断をルールに任せるか</td></tr></table>
     <p class="mute">それぞれの操作は下の「立場の操作」にある。PR をレビュー・マージするチーム（PJ）は立場の外で、フローの外の手続きとして扱う。</p></section>
   <section><h2>状態とイベント</h2><div class="stage"><div data-diagram="flow"></div>
@@ -351,7 +351,7 @@ main.page { display: block; }
     <div class="prose"><p>メタプログラマーは処理の中には入らず、ルールとゲートを通して何を自動で通すかを決める。</p>
     <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から足す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
     <p><b>見直しも提案で届く。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。蒸留エージェントは <code>k2down report</code> の落とす候補（一度も当たらない）、書き直す候補（外れや異議が多い）、ぶつかる組から、外す提案と言い直しの提案も出す。メタプログラマーは report を読み込まなくても、提案を決めればよい。</p>
-    <p><b>任せる範囲を決める。</b>マージの前に止めるかもルールで決まる（最初は「マージ前に必ずクライアントに聞く」から始め、記録を見て狭める）。失敗からのやり直し（<code>algr reopen</code>）もメタプログラマーの持ち物。</p>
+    <p><b>任せる範囲を決める。</b>マージの前に止めるかもルールで決まる（最初は「マージ前に必ずクライアントに聞く」から始め、記録を見て狭める）。失敗の原因がフロー側（実行環境やプロンプト）にあれば直す。やり直す（<code>algr reopen</code>）かは、依頼したクライアントが決める。</p>
     <p>この層のことは、画面上の切り替えで「メタプログラマー」に入って見る。前回の見直しからの変化、ゲート、決めること（提案と根拠）、ルールの効き、蒸留エージェントの動きがまとまっている。</p>
         <p class="mute">ルールの変更は rules.json の差分として PR に載る。</p></div></div></section>
   <section class="prose"><h2>ID</h2><table class="htable"><tr><th>対象</th><th>形</th><th>振るところ</th></tr>
@@ -401,7 +401,7 @@ const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", min
 // いま誰の手にあるか：色の名前と短い言葉
 function who(t) {
   const p = t.progress;
-  if (t.state === "failed") return ["bad", "失敗"];  // やり直すかはメタプログラマーが決める
+  if (t.state === "failed") return ["bad", "失敗"];  // やり直すかはクライアントが決める
   if (t.state === "done") return p.roles.includes("distill") ? ["agent", "蒸留"] : ["done", "完了"];
   if (p.waiting === "human") return ["human", "あなた"];
   if (p.waiting === "merge") return ["queue", "マージ先待ち"];
@@ -443,21 +443,22 @@ function row(t) {
 
 const DAY = 86400e3;
 const within = (ts, ms) => ts && Date.parse(data.now) - Date.parse(ts) < ms;
-// メタプログラマーの番：まだ決めていない提案と、ゲート（失敗）
+// メタプログラマーが見るもの：まだ決めていない提案と、失敗（原因がフロー側なら直す。やり直すかはクライアント）
 const gates = () => data.tasks.filter((t) => t.state === "failed");
 
 function render() {
   const tasks = data.tasks;
   $("updated").textContent = clock(data.now);
-  const asks = tasks.filter(waiting), metaN = data.proposals.length + gates().length;
+  const asks = tasks.filter((t) => waiting(t) || t.state === "failed"), metaN = data.proposals.length + gates().length;
   for (const [id, n] of [["client-n", asks.length], ["meta-n", metaN]]) { $(id).textContent = n; $(id).hidden = !n; }
 
-  // あなたに聞きたいこと：クライアントの番は回答だけ。やり直しはメタの画面で
+  // あなたに聞きたいこと：判断待ちへの回答と、失敗したタスクをやり直すか
   $("ask-n").textContent = asks.length;
   $("asks").innerHTML = asks.length ? `<div class="asks">${asks.map((t) => {
     const qs = t.questions.filter((q) => q.answer === null);
     return `<div class="ask" data-id="${t.id}">
       <div class="top"><span class="mono mute">${t.id}</span><span class="title">${esc(t.title)}</span></div>
+      ${t.progress.failure ? `<div class="q">${ROLE[t.progress.failure.role] || esc(t.progress.failure.role)}で失敗：${esc(t.progress.failure.message)}</div>` : ""}
       ${qs.map((q) => `<div class="q"><span class="mono mute">${q.id}</span>　${esc(q.text)}</div>
         ${q.options.length || q.recommended ? `<div class="opts">${(q.options.length ? q.options : [q.recommended]).map((o) => `<span class="opt ${o === q.recommended ? "rec" : ""}">${esc(o)}${o === q.recommended ? "（推奨）" : ""}</span>`).join("")}</div>` : ""}`).join("")}
       <div class="cli"><code class="mono">${esc(t.actions[0]?.cli || "")}</code><button class="btn copy" data-cli="${esc(t.actions[0]?.cli || "")}">copy</button></div>
@@ -652,7 +653,7 @@ function renderMeta() {
 
   // ゲート：待たせているものだけを細い帯で。見直しとは時間の軸が違う
   const g = gates();
-  $("m-gate").innerHTML = `<span class="k">ゲート — 待たせているもの ${g.length}</span>` + (g.map((t) => `<span class="g" data-id="${t.id}"><span class="mono mute">${t.id}</span>${esc(t.title)} · ${ROLE[t.progress.failure?.role] || ""}で失敗</span>`).join("") || `<span class="mute">なし</span>`);
+  $("m-gate").innerHTML = `<span class="k">失敗 — 原因を見る（やり直すかはクライアント） ${g.length}</span>` + (g.map((t) => `<span class="g" data-id="${t.id}"><span class="mono mute">${t.id}</span>${esc(t.title)} · ${ROLE[t.progress.failure?.role] || ""}で失敗</span>`).join("") || `<span class="mute">なし</span>`);
 
   // 決めること：提案を 1 件ずつ、根拠と一緒に
   const ps = r.proposals;

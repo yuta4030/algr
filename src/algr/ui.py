@@ -73,7 +73,7 @@ def _actions(task: Task) -> list[dict[str, str]]:
         answers = " ".join(f'{q.id}="{q.recommended or "..."}"' for q in task.open_questions())
         return [{"name": "answer", "cli": f"algr answer {task.id} {answers}"}]
     if task.state == State.FAILED:
-        return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}]
+        return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}]  # クライアントの操作
     return []
 
 

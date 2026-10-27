@@ -181,7 +181,7 @@ LAYERS = Diagram(
         Node("decisions", 320, 320, 440, "判断", "人の答え・方針も、ルールに従った判断も（k2down）", DATA, 60),
         Node("rules", 660, 320, 140, "ルール", "rules.json", DATA, 60),
         Node("distill", 320, 460, 180, "蒸留エージェント", "done のあと：提案を出す", AGENT),
-        Node("meta", 560, 460, 180, "メタプログラマー", "accept・decline・reopen", HUMAN),
+        Node("meta", 560, 460, 180, "メタプログラマー", "distill・accept・decline", HUMAN),
     ],
     edges=[
         Edge("M160 128V172"),  # 依頼・答え
@@ -236,7 +236,7 @@ FLOW_DIAGRAM = Diagram(
         Node("waiting-review", 650, 590, 180, "waiting-review", "クライアントが答える", holder=HUMAN),
         Node("merging", 330, 720, 200, "merging", "マージのアダプタを待つ"),
         Node("done", 330, 850, 200, "done", "マージ先に入った → 蒸留へ（図 3）"),
-        Node("failed", 120, 830, 176, "failed", "メタプログラマーが reopen", holder=HUMAN),
+        Node("failed", 120, 830, 176, "failed", "クライアントが reopen", holder=HUMAN),
     ],
     edges=[
         Edge("M220 112V130H330", arrow=False),

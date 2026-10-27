@@ -22,7 +22,7 @@ from algr.model import Event, State, Task
 DESCRIPTION = """\
 algr: a flow for Algorithmic Development.
 Rules fill in decisions; ready tasks flow through implementation and review to merge.
-The client only sees the waiting states (waiting-intake / waiting-implement / waiting-review) and failed.
+The client only sees the waiting states (waiting-intake / waiting-implement / waiting-review) and failed (to reopen).
 
   algr init                                         # write .algr/config.toml with fake adapters
   algr new "Add login" --question "auth: How do users sign in?"
@@ -43,8 +43,8 @@ WAITING = "waiting"
 # 操作がどちらの立場のものか。README の「立場」と algr ui のヘルプはここと突き合わせる（tests/test_help.py）。
 # ここに無いコマンドは、見るためのものと、フローを回すためのもの
 STANCES: dict[str, tuple[str, ...]] = {
-    "クライアント": ("new", "answer", "depends"),
-    "メタプログラマー": ("distill", "accept", "decline", "reopen"),
+    "クライアント": ("new", "answer", "depends", "reopen"),
+    "メタプログラマー": ("distill", "accept", "decline"),
 }
 
 INIT_CONFIG = """\

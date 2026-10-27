@@ -221,7 +221,7 @@ class Engine:
         return self.tasks.get(task.id)
 
     def reopen(self, task_id: str, note: str = "") -> Task:
-        """failed のタスクを起票に戻す。修正依頼の回数は数え直す。"""
+        """クライアントが failed のタスクを起票に戻す。依頼を通せなかったので、やり直すかは依頼した側が決める。修正依頼の回数は数え直す。"""
         task = self.tasks.get(task_id)
         if task.state != State.FAILED:
             raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
