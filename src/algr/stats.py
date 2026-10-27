@@ -82,6 +82,9 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         elif "job" in r and r["task_id"] in by_task:
             tokens_by_role[r["role"]] = tokens_by_role.get(r["role"], 0) + sum(r.get("usage", {}).values())
 
+    # 同じ提案は判断ストアが同じ ID で返すので、2 回目からを重複として数える。方針のタスクの蒸留も含める
+    returned = [pid for j in jobs for pid in j.get("proposals", [])]
+
     by_kind: dict[str, int] = {}
     for j in jobs:
         for kind, n in j.get("usage", {}).items():
@@ -103,6 +106,8 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "jobs_by_role": by_role,
         "jobs_per_task": _rate(sum(by_role.values()), created),
         "tokens_by_role": tokens_by_role,
+        "proposals": len(returned),
+        "duplicate_proposals": len(returned) - len(set(returned)),
         "tokens_per_task": _rate(sum(by_kind.values()), created),
         "tokens_per_task_by_kind": {kind: _rate(n, created) for kind, n in by_kind.items()},
     }

@@ -538,6 +538,20 @@ def test_token_usage_and_agent_settings(engine, repo):
     assert summary["tokens_by_role"] == {"intake": 110, "implement": 110, "review": 110}
 
 
+def test_duplicate_proposals_are_counted_from_distill_jobs():
+    from algr import stats
+
+    records = [
+        {"job": "I1.distill.4", "task_id": "I1", "role": "distill", "state": "completed", "proposals": ["P-001", "P-002"]},
+        {"job": "I2.distill.3", "task_id": "I2", "role": "distill", "state": "completed", "proposals": ["P-001"]},
+        {"job": "I3.distill.2", "task_id": "I3", "role": "distill", "state": "completed", "proposals": ["P-001", "P-003"]},
+        {"job": "I3.implement.1", "task_id": "I3", "role": "implement", "state": "completed"},
+    ]
+    summary = stats.summarize(records)
+    assert summary["proposals"] == 5
+    assert summary["duplicate_proposals"] == 2
+
+
 def test_watch_keeps_dispatching_until_stopped(engine):
     engine.create("one")
     seen = []
