@@ -189,7 +189,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `intake` | intake にいる間 | `{"fills": [{"question_id", "answer", "rule_ids"}], "questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `implement` | in-progress にいる間 | `{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、聞くときは `{"questions": [{"text", "topic"?, "options"?, "recommended"?}]}` |
 | `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"], "questions"?: [{"text", "topic"?, "options"?, "recommended"?}]}` |
-| `distill` | done になったタスクに、クライアントが答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}` |
+| `distill` | done になったタスクに、クライアントが答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"?, "scope"?}], "retire"?: [{"rule_id", "reason", "source"?}]}` |
 
 `intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
 別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
@@ -197,11 +197,12 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 実装とレビューの `questions` は、ルールで決まらない判断の問いで、クライアントに聞きます（聞く前に `input.rules` を当て、当たらないものだけを聞きます）。
 `objections` は判断への異議で、これもクライアントに聞きます。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
 レビューが聞いたときは、答えがそろってから走り直したレビューが、承認か修正依頼かを決めます。答えが判断どおりかをコアは見比べません。
-ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
+ジョブの入力（`input`）には今のルールが入り（役の範囲のルールと範囲の無いルール。レビューには判断と未決事項が引いたルールも足し、蒸留には全ルール）、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
 レビューにはクライアントが決めた未決事項の ID（`settled`）、蒸留には判断ストアの手入れの候補（`report`）も入ります。やり直しは一から作らず、差分だけ直す前提です。
 
 蒸留はクライアントの答えのほか、`report` の落とす候補（一度も当たらないルール）・書き直す候補（外れや異議の多いルール）・ぶつかる組から、
 外す提案と言い直し（新しいルールと外す提案の対）を出します。`report` から出した提案は、元になった決断 ID（`source`）を持ちません。
+足す提案の `scope` はルールの範囲で、役の名前（`intake` / `implement` / `review` / `distill`）を書きます。無ければ範囲なしで、どの役のジョブにも渡ります。
 判断ストアが `report()` を持たなければ、`report` は空です（k2down とフェイクは持っています）。
 
 結果の形が違えば、ジョブは失敗として扱います。形の定義は `src/algr/agents.py` にあります。
@@ -310,7 +311,7 @@ command = ["k2down"]                    # 省略時。uvx で動かすなら ["u
 ```
 
 蒸留エージェントの提案は `k2down propose` で k2down の proposals.json に積み、`algr accept` で `k2down accept`、`algr decline` で `k2down decline` を呼びます。
-受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。外す提案の理由は `--reason`、元になった決断 ID は `--decision` で渡します。
+受け入れも却下も k2down の usage.jsonl に残ります。蒸留に渡す手入れの候補は `k2down report --json` から取ります。外す提案の理由は `--reason`、元になった決断 ID は `--decision`、ルールの範囲は `--scope` で渡し、ジョブに渡すルールは `k2down list --json --scope <役>` で引きます。
 k2down は README の「互換性」で `--json` の出力と終了コードを約束し、0.x のうちは壊れる変更でマイナーを上げます。アダプタは知らないキーを無視します。
 store を git で管理するなら、k2down のロック（`.k2down.lock`）を `.gitignore` に入れてください。
 rules.json の差分は PR に載ります。

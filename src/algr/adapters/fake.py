@@ -225,7 +225,8 @@ class LocalProcess:
 class RuleFile:
     """1 行ルールと判断の記録をファイルで持つ。k2down の代わりに使うフェイクの判断ストア。
 
-    rules.json に {"issued", "rules": [{"id", "text"}], "proposals": [判断ストアの IF の proposals() と同じ形]}、
+    rules.json に {"issued", "rules": [{"id", "text", "scope"?}], "proposals": [判断ストアの IF の proposals() と同じ形]}、
+    scope の無いルールは範囲なし（どの範囲にも当たる）として読む。
     usage.jsonl に apply / reject / escalate / decide / propose / retire / decline の記録を追記する。
     report() は k2down report の一部を、ここの記録から数えて返す。
     """
@@ -248,15 +249,18 @@ class RuleFile:
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
-    def rules(self) -> list[Rule]:
-        return [Rule(r["id"], r["text"]) for r in self._load()["rules"]]
+    def rules(self, scope: str | None = None) -> list[Rule]:
+        rules = self._load()["rules"]
+        if scope is not None:
+            rules = [r for r in rules if r.get("scope", "") in ("", scope)]
+        return [Rule(r["id"], r["text"]) for r in rules]
 
-    def add(self, text: str) -> str:
+    def add(self, text: str, scope: str = "") -> str:
         data = self._load()
         # 振った数は k2down と同じく issued に持ち、外したルールの番号を使い回さない
         data["issued"] = data.get("issued", len(data["rules"])) + 1
         rule_id = f"R{data['issued']:03d}"
-        data["rules"].append({"id": rule_id, "text": text})
+        data["rules"].append({"id": rule_id, "text": text, **({"scope": scope} if scope else {})})
         _write_json(self.dir / "rules.json", data)
         return rule_id
 
@@ -283,8 +287,8 @@ class RuleFile:
         self._log("proposed", proposal=proposal_id, kind=kind, **{key: value}, **fields)
         return proposal_id
 
-    def propose(self, rule: str, source: str) -> str:
-        return self._add_proposal("add", "rule", rule, decision=source)
+    def propose(self, rule: str, source: str, scope: str = "") -> str:
+        return self._add_proposal("add", "rule", rule, decision=source, **({"scope": scope} if scope else {}))
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
         return self._add_proposal("retire", "rule_id", rule_id, reason=reason, decision=source)
@@ -305,7 +309,7 @@ class RuleFile:
             self._log("retired", rule_id=proposal["rule_id"])
             return proposal["rule_id"]
         _write_json(self.dir / "rules.json", data)
-        return self.add(proposal["rule"])
+        return self.add(proposal["rule"], proposal.get("scope", ""))
 
     def reject_proposal(self, proposal_id: str) -> None:
         data = self._load()

@@ -26,6 +26,7 @@ from algr.adapters import (
     MergeAdapter,
     MergeState,
     Notifier,
+    Rule,
     RunState,
     RunStatus,
     TaskAdapter,
@@ -394,7 +395,7 @@ class Engine:
                 continue
             job = Job(id=f"{task.id}.{role}.{task.next_job()}", role=role, task=task)
             report = self.report() if role == Role.DISTILL else None
-            job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
+            job.input = job_input(role, task, self._rules_for(role, task), self.agents.get(str(role)), report)
             record: dict[str, Any] = {"job_started": job.id, "task_id": task.id, "role": str(role)}
             if role == Role.DISTILL:
                 # 蒸留が何を読んだか（クライアントの答えと report の候補の数）を残し、画面で見えるようにする
@@ -405,6 +406,21 @@ class Engine:
             self.tasks.save(task)
             self.executor.start(job)
             self._log({**record, "ts": _now()})
+
+    def _rules_for(self, role: Role, task: Task) -> list[Rule]:
+        """ジョブに渡すルール。役の範囲のルールと範囲の無いルールを判断ストアから引く。
+
+        蒸留はルールの手入れをするので全ルールを渡す。レビューには、判断や未決事項が引いたルールも足す
+        （ほかの役の範囲のルールを引いていても、知らないルールとして差し戻さないため）。
+        """
+        if role == Role.DISTILL:
+            return self.decisions.rules()
+        rules = self.decisions.rules(scope=str(role))
+        if role == Role.REVIEW:
+            cited = {i for item in [*task.decisions, *task.questions] for i in item.rule_ids} - {r.id for r in rules}
+            if cited:
+                rules += [r for r in self.decisions.rules() if r.id in cited]
+        return rules
 
     def poll(self) -> None:
         """走っているジョブの状態を実行アダプタに聞き、終わったものの結果でタスクを先へ進める。"""
@@ -490,7 +506,7 @@ class Engine:
             self._review_done(task, result)
         elif isinstance(result, DistillResult):
             # 同じ提案は二重に出ないので、ぶつかって受け取り直しても ID は変わらない
-            proposals = [self.decisions.propose(r["rule"], source=r["source"]) for r in result.rules]
+            proposals = [self.decisions.propose(r["rule"], source=r["source"], scope=r["scope"]) for r in result.rules]
             proposals += [self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"]) for r in result.retire]
             self.tasks.save(task)
             return proposals

@@ -124,7 +124,9 @@ class DecisionStore(Protocol):
     落とす候補（drop_candidates）、書き直す候補（rewrite_candidates）、ぶつかる組（conflict_candidates）、却下された提案（declined_proposals）。
     """
 
-    def rules(self) -> list[Rule]: ...
+    def rules(self, scope: str | None = None) -> list[Rule]:
+        """ルールを返す。scope（役の名前など）を渡すと、その範囲のルールと範囲の無いルールだけを返す。None なら全ルール。"""
+        ...
 
     def apply(self, decision: str, problem: str, rule_ids: list[str]) -> None: ...
 
@@ -136,8 +138,8 @@ class DecisionStore(Protocol):
 
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None: ...
 
-    def propose(self, rule: str, source: str) -> str:
-        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。メタプログラマーの accept をもってルールになる。同じ提案は二重に出さない。"""
+    def propose(self, rule: str, source: str, scope: str = "") -> str:
+        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。scope はルールの範囲で、空なら範囲なし。メタプログラマーの accept をもってルールになる。同じ提案は二重に出さない。"""
         ...
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
@@ -147,7 +149,7 @@ class DecisionStore(Protocol):
     def proposals(self) -> list[dict[str, str]]:
         """まだ受け入れも却下もされていない提案。
 
-        足す提案は {"id", "kind": "add", "rule", "decision"}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
+        足す提案は {"id", "kind": "add", "rule", "decision", "scope"?}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
         decision は propose / propose_retire の source に渡した決断 ID。report の候補から出した提案では空。
         """
         ...

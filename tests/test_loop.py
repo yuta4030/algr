@@ -10,8 +10,9 @@ import pytest
 from conftest import run_until, state
 
 from algr.adapters import AdapterError, MergeState, MergeStatus
+from algr.agents import ResultError, parse
 from algr.flow import TransitionError
-from algr.model import Event, State
+from algr.model import Decision, Event, Role, State
 
 
 def names(engine, task_id):
@@ -570,3 +571,36 @@ def test_distill_reads_the_report_and_proposes_retiring_unused_rules(engine):
     assert job["input"]["report"]["drop_candidates"] == ["R001"]
     # report から出した提案は、元になった決断 ID を持たない
     assert engine.decisions.proposals() == [{"id": "P001", "kind": "retire", "rule_id": "R001", "reason": "report: 一度も当たっていない", "decision": ""}]
+
+
+def test_jobs_get_only_the_rules_in_their_scope(engine):
+    engine.decisions.add("shared")
+    engine.decisions.add("for implement", scope="implement")
+    engine.decisions.add("for review", scope="review")
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+
+    def given(job_id):
+        job = json.loads((engine.executor.dir / job_id / "job.json").read_text(encoding="utf-8"))
+        return [r["id"] for r in job["input"]["rules"]]
+
+    assert given("I1.intake.1") == ["R001"]
+    assert given("I1.implement.2") == ["R001", "R002"]
+    assert given("I1.review.3") == ["R001", "R003"]
+    # レビューには、判断が引いたほかの範囲のルールも足す。蒸留には全ルールを渡す
+    task = engine.tasks.get("I1")
+    task.decisions = [Decision("I1-1", "db", "sqlite", rule_ids=["R002"])]
+    assert [r.id for r in engine._rules_for(Role.REVIEW, task)] == ["R001", "R003", "R002"]
+    assert [r.id for r in engine._rules_for(Role.DISTILL, task)] == ["R001", "R002", "R003"]
+
+
+def test_distill_proposes_rules_with_a_scope(engine):
+    result = parse(Role.DISTILL, {"rules": [{"rule": "x", "scope": "implement"}, {"rule": "y"}]})
+    assert [(r["rule"], r["scope"]) for r in result.rules] == [("x", "implement"), ("y", "")]
+    with pytest.raises(ResultError, match="scope"):
+        parse(Role.DISTILL, {"rules": [{"rule": "x", "scope": "src/algr"}]})
+    proposal_id = engine.decisions.propose("x", "I1-1", scope="implement")
+    assert engine.decisions.proposals()[0]["scope"] == "implement"
+    rule_id = engine.decisions.accept(proposal_id)
+    assert engine.decisions.rules(scope="review") == []
+    assert [r.id for r in engine.decisions.rules(scope="implement")] == [rule_id]
