@@ -338,7 +338,7 @@ main.page { display: block; }
   <section class="prose"><h2>立場</h2>
     <p>処理の外側に 2 つの立場がある。処理の層の問いにはクライアントが、メタの層（ルール）にはメタプログラマーが答える。立場を人が埋めるか、その横の AI が埋めるかは algr は区別しない。</p>
     <table class="htable"><tr><th>立場</th><th>やること</th><th>答える判断</th></tr>
-      <tr><td>クライアント</td><td>やりたいことをまとめ、タスクに分けて順番を決める。あとは判断待ちに答え、通せなかった依頼（<code>failed</code>）をやり直すかを決める</td><td>タスクの問いすべて（要望したものを出してよいか、マージしてよいか、公開 IF を変えてよいかも含む）</td></tr>
+      <tr><td>クライアント</td><td>やりたいことをまとめ、タスクに分けて順番を決める。あとは判断待ちに答え、通せなかった依頼（<code>failed</code>）をやり直すかやめるかを決める。目的を変えるときは、やめて新しく依頼する</td><td>タスクの問いすべて（要望したものを出してよいか、マージしてよいか、公開 IF を変えてよいかも含む）</td></tr>
       <tr><td>メタプログラマー</td><td>タスクには答えない。クライアントの答えの記録、<code>algr stats</code>、report を見てルールを直す</td><td>どの判断をルールに任せるか</td></tr></table>
     <p class="mute">それぞれの操作は下の「立場の操作」にある。PR をレビュー・マージするチーム（PJ）は立場の外で、フローの外の手続きとして扱う。</p></section>
   <section><h2>状態とイベント</h2><div class="stage"><div data-diagram="flow"></div>
@@ -383,7 +383,7 @@ function distillIO(d) {
     : d.state !== "completed" ? "" : d.proposals.length ? `提案 ${d.proposals.map((p) => p.open ? `<b title="未決定">${p.id}</b>` : `<span title="決定済み">${p.id}</span>`).join(" ")}` : "提案なし";
   return `${esc(read || "読むものなし")}${out ? ` → ${out}` : ""}`;
 }
-const ACTION = { answer: "回答する", reopen: "やり直す" };
+const ACTION = { answer: "回答する", reopen: "やり直す", cancel: "やめる" };
 const waiting = (t) => data.flow.waiting.includes(t.state);
 const ASKED = ["intake.asked", "implement.asked", "review.asked"], ANSWERED = ["intake.answered", "implement.answered", "review.answered"];
 let data = null, openId = null;
@@ -403,6 +403,7 @@ function who(t) {
   const p = t.progress;
   if (t.state === "failed") return ["bad", "失敗"];  // やり直すかはクライアントが決める
   if (t.state === "done") return p.roles.includes("distill") ? ["agent", "蒸留"] : ["done", "完了"];
+  if (t.state === "canceled") return ["queue", "やめた"];
   if (p.waiting === "human") return ["human", "あなた"];
   if (p.waiting === "merge") return ["queue", "マージ先待ち"];
   if (p.waiting === "agent") return ["agent", p.roles.filter((r) => r !== "distill").map((r) => ROLE[r]).join("・")];
@@ -416,6 +417,7 @@ function steps(t) {
   return stages.map((s, i) => {
     let c = "step";
     if (t.state === "done") c += " done";
+    else if (t.state === "canceled") c += i <= at ? " past" : "";
     else if (i < at) c += " past";
     else if (i === at) c += " now " + kind;
     return `<i class="${c}" title="${s}"></i>`;
@@ -461,27 +463,28 @@ function render() {
       ${t.progress.failure ? `<div class="q">${ROLE[t.progress.failure.role] || esc(t.progress.failure.role)}で失敗：${esc(t.progress.failure.message)}</div>` : ""}
       ${qs.map((q) => `<div class="q"><span class="mono mute">${q.id}</span>　${esc(q.text)}</div>
         ${q.options.length || q.recommended ? `<div class="opts">${(q.options.length ? q.options : [q.recommended]).map((o) => `<span class="opt ${o === q.recommended ? "rec" : ""}">${esc(o)}${o === q.recommended ? "（推奨）" : ""}</span>`).join("")}</div>` : ""}`).join("")}
-      <div class="cli"><code class="mono">${esc(t.actions[0]?.cli || "")}</code><button class="btn copy" data-cli="${esc(t.actions[0]?.cli || "")}">copy</button></div>
+      ${t.actions.map((a) => `<div class="cli"><code class="mono">${esc(a.cli)}</code><button class="btn copy" data-cli="${esc(a.cli)}">copy</button></div>`).join("")}
     </div>`;
   }).join("")}</div>` : `<div class="clear"><span class="mark">✓</span>なし</div>`;
 
   // 頼んだこと
   const order = { human: 0, agent: 1, deps: 2, merge: 3, queue: 4 };
-  const active = tasks.filter((t) => t.state !== "done").sort((a, b) =>
+  const ended = (t) => t.state === "done" || t.state === "canceled";
+  const active = tasks.filter((t) => !ended(t)).sort((a, b) =>
     (a.state === "failed") - (b.state === "failed") || order[a.progress.waiting] - order[b.progress.waiting] ||
     data.flow.stages.indexOf(b.progress.stage) - data.flow.stages.indexOf(a.progress.stage));
-  const done = tasks.filter((t) => t.state === "done" && t.source !== "policy").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
+  const done = tasks.filter((t) => ended(t) && t.source !== "policy").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
   $("active-n").textContent = `動いている ${active.length} 件`;
   const head = `<div class="row head"><span></span><span></span><span class="steps labels">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</span><span></span><span></span></div>`;
   $("rows").innerHTML = head + (active.length ? active.map(row).join("") : `<div class="empty">動いているタスクはありません</div>`) +
-    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done ${done.length}</summary>${done.map(row).join("")}</details>` : "");
+    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done・canceled ${done.length}</summary>${done.map(row).join("")}</details>` : "");
 
   // 今日届いたもの・この 7 日
-  const today = done.filter((t) => within(t.progress.since, DAY));
+  const today = done.filter((t) => t.state === "done" && within(t.progress.since, DAY));
   $("arrived").innerHTML = today.map((t) => `<li data-id="${t.id}"><span class="t">${clock(t.progress.since)}</span>
     <span><b>${t.id} ${esc(t.title)}</b> がマージされた${t.progress.asked ? ` · あなたへの問い ${t.progress.asked} 回` : " · あなたへの問いなし"}</span></li>`).join("") || `<li class="mute">まだありません</li>`;
   const answered = tasks.flatMap((t) => t.events).filter((e) => ANSWERED.includes(e.name) && within(e.ts, 7 * DAY)).length;
-  $("week").innerHTML = `<div class="tile"><div class="v">${done.filter((t) => within(t.progress.since, 7 * DAY)).length}</div><div class="k">届いた</div></div>
+  $("week").innerHTML = `<div class="tile"><div class="v">${done.filter((t) => t.state === "done" && within(t.progress.since, 7 * DAY)).length}</div><div class="k">届いた</div></div>
     <div class="tile"><div class="v">${answered}</div><div class="k">あなたが答えた</div></div>`;
   $("handoff").hidden = !metaN;
   $("handoff").innerHTML = `<b>${metaN}</b><span>メタプログラマーの番があります。中身はメタの画面で</span>`;
@@ -719,7 +722,7 @@ document.addEventListener("click", (ev) => {
 
 // 状態の置き場所。主経路を横に、判断待ちを聞いた役の上に、失敗を下に置く
 const POS = { intake: [80, 200], ready: [230, 200], "in-progress": [380, 200], review: [530, 200], merging: [680, 200], done: [830, 200],
-  "waiting-intake": [80, 60], "waiting-implement": [380, 60], "waiting-review": [530, 60], failed: [455, 345] };
+  "waiting-intake": [80, 60], "waiting-implement": [380, 60], "waiting-review": [530, 60], failed: [455, 345], canceled: [830, 345] };
 function renderFlow() {
   const f = hist.flow, max = Math.max(1, ...f.edges.map((e) => e.count)), NW = 120, NH = 58;
   const stages = data.flow.stages;
@@ -729,6 +732,7 @@ function renderFlow() {
   };
   let edges = "", labels = "";
   for (const e of f.edges) {
+    if (e.to === "canceled" && !e.count) continue;  // やめるはどこからでも入れるので、通っていない矢印は描かない
     const a = POS[e.from], b = POS[e.to];
     const forward = stages.indexOf(e.to) - stages.indexOf(e.from) === 1 && stages.includes(e.from);
     const k = forward ? 0 : 46, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);

@@ -16,7 +16,7 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 - 処理の外側に 2 つの立場がある。表は README の「立場」。立場を人が埋めるかその横の AI が埋めるかは algr は区別しない（`by: "human"` は「ルールではなく立場から来た」と読む）。
   algr が保証するのは「フローの中では決めず、立場に渡す」まで。文書でも「人に上げる」ではなく「クライアントに聞く」のように立場の言葉で書く
 - クライアント（処理の層）：タスクの問いにすべて答える。要望したものを出してよいか（マージしてよいか、公開 IF を変えてよいか）も含む。
-  ふだんの出番はやりたいことをまとめ、タスクに分けて順番を決めるまで。あとは判断待ちに答え、通せなかった依頼（failed）をやり直すかを決める（`new`、`answer`、`depends`、`reopen`）
+  ふだんの出番はやりたいことをまとめ、タスクに分けて順番を決めるまで。あとは判断待ちに答え、通せなかった依頼（failed）をやり直すかやめるかを決める。目的を変えるときは、やめて new し直す（`new`、`answer`、`depends`、`reopen`、`cancel`）
 - メタプログラマー（メタの層）：タスクには答えない。クライアントの答えの記録、`algr stats`、report を見てルールを直す（`distill`、`accept`、`decline`）。失敗の原因がフロー側にあれば直すが、やり直すかはクライアントが決める
 - こだわり度は `new` の入力にしない。任せるルール（答えではなく「誰が決めるか」を指すルール）で持つ
 - PJ メンバー（PR をレビュー・マージするチーム）は立場の外。マージのアダプタの向こうの手続きとして扱う
@@ -29,7 +29,7 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 - テストは pytest。外部には一切つながず、フェイクアダプタで回す
 
 ## 状態とイベント
-- 状態：intake / waiting-intake / ready / in-progress / waiting-implement / review / waiting-review / merging / done / failed
+- 状態：intake / waiting-intake / ready / in-progress / waiting-implement / review / waiting-review / merging / done / failed / canceled
 - 起票・実装・レビューのどれもクライアントに聞ける。聞いた役は問いを結果に書いて終わり、答えがそろうと聞いた役の状態（`flow.WAITING`）に戻ってその役が走り直す。起票には戻さない
 - 承認したらマージのアダプタに頼み（`request` は冪等）、`merging` で `status` を見て待つ。`merged` で `done`、`changes` で実装に戻す。マージ先（main か統合ブランチか）はアダプタの設定で決まり、コアは同じ
 - イベントと遷移は `src/algr/flow.py` の `TRANSITIONS`、不変条件は `INVARIANTS`、ペイロードの形は `EVENT_DATA`。イベント名やペイロードを変えるときは README の表も直す

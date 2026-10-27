@@ -80,6 +80,13 @@ def test_reopen_needs_a_failed_task(algr):
     assert algr("reopen", "I1")[2] == {"error": "I1 is intake, not failed"}
 
 
+def test_cancel(algr):
+    algr("new", "t")
+    _, task, _ = algr("cancel", "I1", "--note", "changed my mind")
+    assert task["state"] == "canceled"
+    assert algr("cancel", "I1")[2] == {"error": "I1 is canceled and cannot be canceled"}
+
+
 def test_merge_is_not_a_command(repo, capsys):
     with pytest.raises(SystemExit):
         main(["-C", str(repo), "merge", "I1"])

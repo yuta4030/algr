@@ -8,8 +8,8 @@ def task(state, **kw):
     return Task(id="I1", title="t", state=state, **kw)
 
 
-def test_ten_states_and_one_event_per_transition():
-    assert len(State) == 10
+def test_eleven_states_and_one_event_per_transition():
+    assert len(State) == 11
     assert {target for _, target in flow.TRANSITIONS.values()} == set(State)
 
 
@@ -68,3 +68,8 @@ def test_payload_must_match_its_shape():
     flow.check_data("implement.asked", {"from": "in-progress", "channel": "inline", "questions": ["I1-1"]})
     with pytest.raises(flow.TransitionError, match="expected"):
         flow.check_data("implement.asked", {"from": "in-progress", "channel": "inline", "question": "I1-1"})
+
+
+def test_anything_but_done_can_be_canceled():
+    sources, target = flow.TRANSITIONS["task.canceled"]
+    assert (set(State) - sources, target) == ({State.DONE, State.CANCELED}, State.CANCELED)

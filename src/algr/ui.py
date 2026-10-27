@@ -37,13 +37,15 @@ def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]
     names = [e["name"] for e in events]
     stage = DETOUR.get(task.state, task.state)
     failure = task.failure if task.state == State.FAILED else None
-    if task.state == State.FAILED:
-        last = next((e for e in reversed(events) if e["name"] == "task.failed"), None)
+    if task.state in (State.FAILED, State.CANCELED):
+        # 止まった段。failed からやめたものは、failed になった段に置く
+        last = next((e for e in reversed(events) if e["name"] in ("task.failed", "task.canceled") and e["data"]["from"] != State.FAILED), None)
         stage = State(last["data"]["from"]) if last else State.INTAKE
+        stage = DETOUR.get(stage, stage)
     blocked_by = [d for d in task.depends if states.get(d) != State.DONE] if task.state == State.READY else []
     if task.state in flow.WAITING or task.state == State.FAILED:
         waiting = "human"
-    elif task.state == State.DONE:
+    elif task.state in (State.DONE, State.CANCELED):
         waiting = "none"
     elif task.state == State.MERGING:
         waiting = "merge"
@@ -73,7 +75,7 @@ def _actions(task: Task) -> list[dict[str, str]]:
         answers = " ".join(f'{q.id}="{q.recommended or "..."}"' for q in task.open_questions())
         return [{"name": "answer", "cli": f"algr answer {task.id} {answers}"}]
     if task.state == State.FAILED:
-        return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}]  # クライアントの操作
+        return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}, {"name": "cancel", "cli": f'algr cancel {task.id} --note "..."'}]
     return []
 
 

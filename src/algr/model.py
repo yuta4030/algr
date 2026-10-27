@@ -19,6 +19,7 @@ class State(StrEnum):
     MERGING = "merging"
     DONE = "done"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 class Channel(StrEnum):

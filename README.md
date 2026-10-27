@@ -15,7 +15,7 @@ algr が保証するのは「フローの中では決めず、立場に渡す」
 
 | 立場 | やること | 答える判断 | 操作 |
 |---|---|---|---|
-| クライアント | やりたいことをまとめ、タスクに分けて順番を決める。`new` では何を、何のためにやるか（ルールが当たるかを読める事実）を出す。あとは判断待ちだけに答える | タスクの問いすべて。要望したものを出してよいか（マージしてよいか、公開 IF を変えてよいか）も含む | `algr new`、`algr answer`、`algr depends`、`algr reopen` |
+| クライアント | やりたいことをまとめ、タスクに分けて順番を決める。`new` では何を、何のためにやるか（ルールが当たるかを読める事実）を出す。あとは判断待ちに答え、通せなかった依頼（failed）をやり直すかやめるかを決める。目的を変えるときは、やめて `new` し直す | タスクの問いすべて。要望したものを出してよいか（マージしてよいか、公開 IF を変えてよいか）も含む | `algr new`、`algr answer`、`algr depends`、`algr reopen`、`algr cancel` |
 | メタプログラマー | タスクには答えない。クライアントの答えの記録、`algr stats`、report を見てルールを直す | どの判断をルールに任せるか（答えではなく「誰が決めるか」を指す任せるルールも含む） | `algr distill`、`algr accept` / `decline` |
 
 起票・実装・レビューのどの役も、ルールで決まらない判断はクライアントに聞けます。クライアントが答えた判断は蒸留エージェントがルールにし、
@@ -45,6 +45,7 @@ algr run                                           # 起票 → 実装 → レ�
 algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
 algr depends I2 --add I3 --remove I1              # 依存先をあとから足す・外す
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
+algr cancel I3 --note "I4 と I5 に分けた"          # やめる。目的を変えるときも、やめて new し直す
 algr distill "日付は UTC で保存する" --topic time  # タスクの外で言った方針を、蒸留エージェントに依頼する
 algr proposals                                     # 蒸留エージェントのルール提案（足す提案と外す提案）
 algr accept P-a2m4n                                # 提案をルールにする。外す提案ならルールを外す（algr decline で却下）
@@ -85,7 +86,7 @@ STP 率（回答・やり直しが一度も入らずに done になった割合�
 
 ## フロー
 
-タスクは 10 の状態を移り、遷移ごとにイベントが 1 つ出ます。イベントがそのまま hook の差し込み口です。
+タスクは 11 の状態を移り、遷移ごとにイベントが 1 つ出ます。イベントがそのまま hook の差し込み口です。
 
 ```text
 主経路       intake ─▶ ready ─▶ in-progress ─▶ review ─▶ merging ─▶ done
@@ -95,6 +96,7 @@ STP 率（回答・やり直しが一度も入らずに done になった割合�
 修正依頼     review ─▶ in-progress（flow.max_rework 回まで。超えたら failed）
 PJ の指摘    merging ─▶ in-progress（max_rework には数えない）
 失敗         intake / in-progress / review / merging ─▶ failed ─▶ intake（クライアントが reopen する）
+やめる       done と canceled 以外 ─▶ canceled（クライアントが cancel する）
 ```
 
 立場に渡るのは、判断待ちの 3 つ（waiting-*）と failed だけです。起票・実装・レビューのどの役も、ルールで決まらない判断はクライアントに聞きます。
@@ -108,6 +110,10 @@ PJ の指摘    merging ─▶ in-progress（max_rework には数えない）
 依存はマージ先に入ったとき（`done`）に解けます。
 failed は、クライアントの依頼を通せなかったことを表します。やり直す（`algr reopen`）かは依頼したクライアントが決めます。原因がフロー側（実行環境、プロンプト、エージェント）にあれば、先にメタプログラマーが直します。
 failed になった理由（`role` と `message`）はタスクの `failure` に残り、`algr show` で読めます。reopen すると消えます。
+
+クライアントは done になっていないタスクを `algr cancel` でやめられます。目的を変える操作は持たず、やめて `new` し直します。
+やめると走っているジョブを止め（実行アダプタが `stop` を持つとき）、あとから届いた結果は捨てます。マージを頼んだ PR は閉じません（マージのアダプタに取り消しの口は無い）。
+依存しているタスクは待ち続けるので、依存を外すか一緒にやめるかを決めるよう知らせます。やめたタスクの答えは蒸留しません（蒸留は done のあと）。
 エージェントが落ちたときの `message` には、エージェントの出力（`algr.agent` なら claude の `result` や `is_error`）の最後の方が入ります。
 
 イベント名とペイロード（`Event.data`）の形は固定です（`src/algr/flow.py` の `TRANSITIONS` と `EVENT_DATA`）。
@@ -131,11 +137,12 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 | `task.done` | `pr` | ルールに従った判断を hit として記録し、クライアントが答えた未決事項があれば蒸留エージェントを起動する |
 | `task.failed` | `role`、`message` | クライアントに知らせる |
 | `task.reopened` | `note` | 起票エージェントを起動する |
+| `task.canceled` | `note` | 走っているジョブを止め、依存しているタスクがあれば知らせる |
 
 イベント名は、聞く・答えるものを役ごとに `<役>.asked` / `<役>.answered` にしています（判断待ちを役ごとの状態に分けたので、どの役が聞いたかがイベントでも分かるように）。
 クライアントが答えた未決事項は立場が決めたことなので、再レビューで異議が出ても蒸し返しません。レビューの異議から立てた問いには、もとの判断が `question_ids` で従います。
 
-トリガーが外から送れるのは、立場の操作と同じ `task.created` / `task.answered` / `task.reopened` だけです。
+トリガーが外から送れるのは、立場の操作と同じ `task.created` / `task.answered` / `task.reopened` / `task.canceled` だけです。
 回答はどの役が聞いたかを知らなくてよいよう `task.answered`（`data` は `{"answers": {"<決断 ID>": "<答え>"}}`）で送り、エンジンが判断待ちの状態から `<役>.answered` を起こします。
 
 ### hook

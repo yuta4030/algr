@@ -41,7 +41,7 @@ def test_snapshot_shows_who_has_each_task(gated):
     assert tasks["I2"]["actions"] == []
     assert tasks["I3"]["progress"]["stage"] == "in-progress"
     assert tasks["I3"]["progress"]["failure"] == {"role": "implement", "message": "exit 1"}
-    assert tasks["I3"]["actions"][0]["name"] == "reopen"
+    assert [a["name"] for a in tasks["I3"]["actions"]] == ["reopen", "cancel"]
     assert tasks["I4"]["progress"]["waiting"] == "deps"
     assert tasks["I4"]["progress"]["blocked_by"] == ["I2"]
     assert [e["name"] for e in tasks["I2"]["events"]][:2] == ["task.created", "task.ready"]

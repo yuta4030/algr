@@ -30,6 +30,7 @@ The client only sees the waiting states (waiting-intake / waiting-implement / wa
   algr answer I1 I1-1="OAuth"                       # the role that asked runs again with the answer
   algr depends I2 --add I1 --remove I3              # change the tasks I2 waits for
   algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
+  algr cancel I1 --note "split into I4 and I5"      # stop a task; to change its purpose, cancel and new
   algr distill "Store dates in UTC" --topic time    # ask the distill agent to propose rules from a policy
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
@@ -43,7 +44,7 @@ WAITING = "waiting"
 # 操作がどちらの立場のものか。README の「立場」と algr ui のヘルプはここと突き合わせる（tests/test_help.py）。
 # ここに無いコマンドは、見るためのものと、フローを回すためのもの
 STANCES: dict[str, tuple[str, ...]] = {
-    "クライアント": ("new", "answer", "depends", "reopen"),
+    "クライアント": ("new", "answer", "depends", "reopen", "cancel"),
     "メタプログラマー": ("distill", "accept", "decline"),
 }
 
@@ -168,6 +169,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("--note", default="")
 
+    p = sub.add_parser("cancel", help="stop a task that is not done (to change its purpose, cancel it and create a new one)")
+    p.add_argument("task_id")
+    p.add_argument("--note", default="")
+
     sub.add_parser("tick", help="take in triggers, collect job results and start jobs once")
     p = sub.add_parser("run", help="tick until no job is running")
     p.add_argument("--interval", type=float, default=0.5, help="seconds between ticks")
@@ -225,6 +230,8 @@ def run(args: argparse.Namespace) -> Any:
         return engine.depend(args.task_id, add=args.add, remove=args.remove)
     if args.command == "reopen":
         return engine.reopen(args.task_id, args.note)
+    if args.command == "cancel":
+        return engine.cancel(args.task_id, args.note)
     if args.command == "tick":
         return {"events": [e.to_dict() for e in engine.tick()]}
     if args.command == "run":

@@ -409,6 +409,36 @@ def test_merge_adapter_errors_are_retried(engine):
     assert "network down" in engine.event_log.read_text(encoding="utf-8")
 
 
+def test_cancel_stops_running_jobs_and_drops_their_results(engine, repo):
+    engine.create("slow one")
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS)
+    job_id = engine.tasks.get("I1").jobs["implement"]
+    engine.cancel("I1", note="split into two")
+    (repo / "stop").write_text("", encoding="utf-8")
+    run_until(engine, lambda: not engine.tasks.get("I1").jobs)
+    assert state(engine, "I1") == State.CANCELED  # 止めたジョブの結果は捨てられ、状態は動かない
+    assert (engine.executor.dir / job_id / "exit").read_text(encoding="utf-8") == "143"
+    assert engine.events[-1].data == {"from": "in-progress", "note": "split into two"}
+
+
+def test_cancel_a_waiting_or_failed_task_and_tell_its_dependents(engine):
+    engine.create("ask", questions=[{"text": "Which?"}])
+    engine.create("after", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
+    engine.cancel("I1")
+    assert engine.notifier.sent()[-1]["message"] == "I1 was canceled (blocks I2)"
+    engine.create("Will fail")
+    run_until(engine, lambda: state(engine, "I3") == State.FAILED)
+    assert engine.cancel("I3").state == State.CANCELED
+
+
+def test_done_cannot_be_canceled(engine):
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    with pytest.raises(TransitionError, match="I1 is done and cannot be canceled"):
+        engine.cancel("I1")
+
+
 def test_dependent_task_waits_until_dependency_is_done(engine, repo):
     engine.create("first slow")
     engine.create("second", depends=["I1"])

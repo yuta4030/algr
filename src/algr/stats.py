@@ -68,6 +68,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "tasks": created,
         "done": len(done),
         "failed": tasks_with("task.failed"),
+        "canceled": tasks_with("task.canceled"),
         "return_rate_implement": _rate(tasks_with("implement.asked"), tasks_with("task.started")),
         "return_rate_review": _rate(tasks_with("review.asked"), tasks_with("task.submitted")),
         "rework_rate": _rate(tasks_with("review.changes_requested"), tasks_with("task.submitted")),

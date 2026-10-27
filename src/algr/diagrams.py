@@ -221,7 +221,7 @@ LAYERS = Diagram(
 
 FLOW_DIAGRAM = Diagram(
     id="flow",
-    title="処理の層：状態は 10。遷移ごとにイベントが 1 つ出て、hook の差し込み口になる",
+    title="処理の層：状態は 11。遷移ごとにイベントが 1 つ出て、hook の差し込み口になる",
     width=820,
     height=920,
     nodes=[
@@ -237,6 +237,7 @@ FLOW_DIAGRAM = Diagram(
         Node("merging", 330, 720, 200, "merging", "マージのアダプタを待つ"),
         Node("done", 330, 850, 200, "done", "マージ先に入った → 蒸留へ（図 3）"),
         Node("failed", 120, 830, 176, "failed", "クライアントが reopen", holder=HUMAN),
+        Node("canceled", 620, 850, 180, "canceled", "クライアントがやめた"),
     ],
     edges=[
         Edge("M220 112V130H330", arrow=False),
@@ -263,6 +264,13 @@ FLOW_DIAGRAM = Diagram(
             dot=(175, 736),
         ),
         Edge("M50 802V186H230", event="task.reopened", src=("failed",), dst="intake", dot=(50, 700)),
+        Edge(
+            "M430 736H620V822",
+            event="task.canceled",
+            src=tuple(sorted({"intake", "waiting-intake", "ready", "in-progress", "waiting-implement", "review", "waiting-review", "merging", "failed"})),
+            dst="canceled",  # 図では merging から 1 本で描く。done とやめたもの以外のどこからでも
+            dot=(525, 736),
+        ),
     ],
     texts=[
         Text(318, 156, "task.created", "b s", "end"),
@@ -291,6 +299,9 @@ FLOW_DIAGRAM = Diagram(
         Text(175, 728, "task.failed", "b s", "middle"),
         Text(132, 762, "作業中の 4 状態から"),
         Text(62, 706, "task.reopened", "b s"),
+        Text(632, 768, "task.canceled", "b s"),
+        Text(632, 783, "done 以外のどこからでも"),
+        Text(632, 798, "変えるときもやめて new"),
     ],
     legend=["holder-agent", "holder-human", "event"],
 )

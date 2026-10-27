@@ -37,9 +37,9 @@ from algr.model import Event, Job, Question, Role, State, Task
 
 Hook = Callable[[Event, "Engine"], Any]
 
-# トリガーが外から送れるイベント。立場の操作（起票、回答、やり直し）と同じ入口を通る。
+# トリガーが外から送れるイベント。立場の操作（起票、回答、やり直し、やめる）と同じ入口を通る。
 # 回答はどの役が聞いたかを知らなくてよいよう task.answered で受け、判断待ちの状態から <役>.answered を起こす
-EXTERNAL_EVENTS = ("task.created", "task.answered", "task.reopened")
+EXTERNAL_EVENTS = ("task.created", "task.answered", "task.reopened", "task.canceled")
 
 # エージェントが起票する別件の未決事項から受け取る項目
 QUESTION_FIELDS = ("text", "topic", "options", "recommended")
@@ -229,6 +229,14 @@ class Engine:
         self.emit("task.reopened", task, note=note)
         return self.tasks.get(task_id)
 
+    def cancel(self, task_id: str, note: str = "") -> Task:
+        """クライアントがタスクをやめる。目的を変えるときも、やめて new し直す。マージ先に入った（done）ものはやめられない。"""
+        task = self.tasks.get(task_id)
+        if task.state in (State.DONE, State.CANCELED):
+            raise flow.TransitionError(f"{task_id} is {task.state} and cannot be canceled")
+        self.emit("task.canceled", task, note=note)
+        return self.tasks.get(task_id)
+
     def depend(self, task_id: str, *, add: list[str] | None = None, remove: list[str] | None = None) -> Task:
         """クライアントが依存先を足す・外す。依存先は実在し、依存をたどって自分に戻らないこと。配車は次の tick から新しい依存で判定する。"""
         task = self.tasks.get(task_id)
@@ -318,6 +326,8 @@ class Engine:
             self.resolve(event.task_id, event.data["answers"])
         elif event.name == "task.reopened":
             self.reopen(event.task_id, event.data.get("note", ""))
+        elif event.name == "task.canceled":
+            self.cancel(event.task_id, event.data.get("note", ""))
         else:
             raise flow.TransitionError(f"triggers may only send {', '.join(EXTERNAL_EVENTS)}, got {event.name}")
 
@@ -639,8 +649,20 @@ class Engine:
         self.tasks.comment(task.id, f"merged: {task.pr}")
         self._start_jobs(task)  # 蒸留エージェント（クライアントが答えた未決事項があれば）
 
+    def _blocks(self, task: Task) -> str:
+        waiting = [t.id for t in self.tasks.list() if task.id in t.depends and t.state not in (State.DONE, State.CANCELED)]
+        return f" (blocks {' '.join(waiting)})" if waiting else ""
+
     def _on_task_failed(self, task: Task, event: Event) -> None:
         # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて知らせる
-        waiting = [t.id for t in self.tasks.list() if task.id in t.depends and t.state != State.DONE]
-        blocks = f" (blocks {' '.join(waiting)})" if waiting else ""
-        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}{blocks}")
+        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}{self._blocks(task)}")
+
+    def _on_task_canceled(self, task: Task, event: Event) -> None:
+        # 走っているジョブは止める（stop は任意）。結果が届いても、状態に合わないので捨てられる。
+        # マージを頼んだ PR は閉じない（マージのアダプタに取り消しの口は無い）。依存しているタスクは待ち続けるので、外すか一緒にやめるかを決めてもらう
+        stop = getattr(self.executor, "stop", None)
+        for job_id in task.jobs.values() if stop else ():
+            stop(job_id)
+        blocks = self._blocks(task)
+        if blocks:
+            self.notifier.notify(task, f"{task.id} was canceled{blocks}")

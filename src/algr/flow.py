@@ -1,6 +1,6 @@
 """状態遷移とイベント、遷移ごとの不変条件。
 
-タスクは 10 の状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
+タスクは 11 の状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
 立場（クライアント）に渡るのは、起票・実装・レビューそれぞれの判断待ち（waiting-*）と failed だけ。
 答えが出ると、聞いた役の状態に戻ってその役が走り直す。
 """
@@ -31,6 +31,8 @@ TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "task.done": (frozenset({S.MERGING}), S.DONE),
     "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW, S.MERGING}), S.FAILED),
     "task.reopened": (frozenset({S.FAILED}), S.INTAKE),
+    # クライアントがやめる。done（マージ先に入った）とやめたもの以外のどこからでも。目的を変えるときも、やめて new し直す
+    "task.canceled": (frozenset(set(S) - {S.DONE, S.CANCELED}), S.CANCELED),
 }
 
 EVENTS = tuple(TRANSITIONS)
@@ -64,6 +66,7 @@ EVENT_DATA: dict[str, tuple[str, ...]] = {
     "task.done": ("pr",),
     "task.failed": ("role", "message"),
     "task.reopened": ("note",),
+    "task.canceled": ("note",),
 }
 
 # 状態とイベントの説明。README の表と algr ui のヘルプはここから作るか、ここと突き合わせる（tests/test_help.py）
@@ -78,6 +81,7 @@ STATE_HELP: dict[State, str] = {
     S.MERGING: "マージのアダプタに頼み、マージ先に入るのを待つ。PJ の修正依頼が来たら実装に戻る",
     S.DONE: "マージ先に入った。クライアントが答えた未決事項があれば蒸留エージェントが走る",
     S.FAILED: "依頼を通せなかった。理由はタスクの failure に残る。クライアントが reopen すると起票に戻る（原因がフロー側なら、先にメタプログラマーが直す）",
+    S.CANCELED: "クライアントがやめた。走っているジョブは止め、依存しているタスクは待ち続ける。目的を変えるときもやめて new し直す",
 }
 
 # イベントごとの既定の処理
@@ -98,6 +102,7 @@ EVENT_HELP: dict[str, str] = {
     "task.done": "ルールに従った判断を hit として記録し、クライアントが答えた未決事項があれば蒸留エージェントを起動する",
     "task.failed": "クライアントに知らせる",
     "task.reopened": "起票エージェントを起動する",
+    "task.canceled": "走っているジョブを止め、依存しているタスクがあれば知らせる",
 }
 
 # hook の差し込み口。イベント名のほかに、すべてのイベントを受ける "*" を使える
