@@ -26,6 +26,7 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
 
   algr init                                         # write .algr/config.toml with fake adapters
   algr new "Add login" --question "auth: How do users sign in?"
+  algr new "Add search" --id TASK-12                # use the ID from your task board
   algr list --state needs-decision
   algr answer I1 I1-1="OAuth"
   algr depends I2 --add I1 --remove I3              # change the tasks I2 waits for
@@ -139,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("new", help="create a task and run intake")
     p.add_argument("title")
+    p.add_argument("--id", default="", help="the task's ID in your task board (default: I1, I2, ...)")
     p.add_argument("--purpose", default="")
     p.add_argument("--question", "-q", action="append", default=[], type=_question, help='"topic: text" or "text"')
     p.add_argument("--priority", type=int, default=0)
@@ -206,6 +208,7 @@ def run(args: argparse.Namespace) -> Any:
     if args.command == "new":
         return engine.create(
             args.title,
+            id=args.id,
             purpose=args.purpose,
             questions=args.question,
             source=args.source,

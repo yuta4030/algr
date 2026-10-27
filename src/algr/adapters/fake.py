@@ -62,8 +62,13 @@ def _append_jsonl(path: Path, data: dict[str, Any]) -> None:
         f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
+def _natural(task_id: str) -> list[Any]:
+    """I2 を I10 より前に並べる。数字の部分は数として比べる。"""
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"(\d+)", task_id)]
+
+
 class FileTasks:
-    """タスクを 1 件 1 ファイルの JSON で持つ。ID は I1, I2, ... と振る。"""
+    """タスクを 1 件 1 ファイルの JSON で持つ。ID を渡されなければ I1, I2, ... と振る。"""
 
     def __init__(self, ctx: Context, dir: str = ".algr/tasks") -> None:
         self.dir = ctx.path(dir)
@@ -72,9 +77,10 @@ class FileTasks:
         return self.dir / f"{task_id}.json"
 
     def create(self, task: Task) -> Task:
-        numbers = [int(m.group(1)) for p in self.dir.glob("I*.json") if (m := re.fullmatch(r"I(\d+)\.json", p.name))]
-        task.id = f"I{max(numbers, default=0) + 1}"
-        self.save(task)
+        if not task.id:
+            numbers = [int(m.group(1)) for p in self.dir.glob("I*.json") if (m := re.fullmatch(r"I(\d+)\.json", p.name))]
+            task.id = f"I{max(numbers, default=0) + 1}"
+        self.save(task)  # 同じ ID がもうあれば Conflict
         return task
 
     def get(self, task_id: str) -> Task:
@@ -84,8 +90,8 @@ class FileTasks:
         return Task.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
     def list(self, state: State | None = None) -> list[Task]:
-        tasks = [Task.from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in self.dir.glob("I*.json")]
-        tasks.sort(key=lambda t: int(t.id[1:]))
+        tasks = [Task.from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in self.dir.glob("*.json")]
+        tasks.sort(key=lambda t: _natural(t.id))
         return [t for t in tasks if state is None or t.state == state]
 
     def save(self, task: Task) -> None:

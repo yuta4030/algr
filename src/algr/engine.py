@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import signal
 import threading
 import time
@@ -39,8 +40,11 @@ Hook = Callable[[Event, "Engine"], Any]
 # トリガーが外から送れるイベント。人の操作（起票、回答、やり直し、マージ）と同じ入口を通る
 EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.done")
 
-# エージェントが起票する別件の未決事項から受け取る項目
+# エージェントが見つけた別件の未決事項から受け取る項目
 QUESTION_FIELDS = ("text", "topic", "options", "recommended")
+
+# 利用者のタスク管理から受け取るタスク ID。ファイル名や決断 ID（<タスク ID>-<番号>）にそのまま使える文字だけ
+TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 # 人の方針を蒸留に依頼するタスクで、方針（答え）を載せる未決事項の問い
 POLICY_QUESTION = "人の方針（タスクの外で受けたもの）"
@@ -127,6 +131,17 @@ class Engine:
         self._drain()
         return event
 
+    def notice(self, name: str, task: Task, **data: Any) -> Event:
+        """遷移しないイベントを積む。状態は動かさず保存もしない。hook に渡すためだけに出す。"""
+        data = {"from": str(task.state), **data}
+        flow.check_data(name, data)
+        event = Event(name, task.id, data)
+        self.events.append(event)
+        self._log(event.to_dict())
+        self._pending.append(event)
+        self._drain()
+        return event
+
     def _drain(self) -> None:
         # ハンドラの中で起きたイベントは、今のイベントの hook が済んでから処理する
         if self._draining:
@@ -135,9 +150,10 @@ class Engine:
         try:
             while self._pending:
                 event = self._pending.popleft()
-                handler = getattr(self, "_on_" + event.name.replace(".", "_"))
-                with _retry_next_tick():  # ハンドラが起動しそこねたジョブは、次の tick の _start_jobs が起動する
-                    handler(self.tasks.get(event.task_id), event)
+                if event.name in flow.TRANSITIONS:  # 遷移しないイベントには既定の処理が無い
+                    handler = getattr(self, "_on_" + event.name.replace(".", "_"))
+                    with _retry_next_tick():  # ハンドラが起動しそこねたジョブは、次の tick の _start_jobs が起動する
+                        handler(self.tasks.get(event.task_id), event)
                 for hook in [*self.hooks.get(event.name, []), *self.hooks.get("*", [])]:
                     self._call_hook(hook, event)
         finally:
@@ -165,16 +181,28 @@ class Engine:
         self,
         title: str,
         *,
+        id: str = "",
         purpose: str = "",
         questions: list[dict[str, Any]] | None = None,
         source: str = "human",
         priority: int = 0,
         depends: list[str] | None = None,
     ) -> Task:
-        """意図を受け取り、タスクを起票に流す。questions は人が最初から分かっている未決事項。"""
+        """意図を受け取り、タスクを起票に流す。questions は人が最初から分かっている未決事項。
+
+        id は利用者のタスク管理での ID（例：ボードの TASK-12）。渡せばそのまま algr のタスク ID と決断 ID の頭になる。
+        同じ id がもうあれば何もせずに返す。トリガーが同じタスクを何度送っても、決着したタスクをやり直さない。
+        """
+        if id:
+            if not TASK_ID.fullmatch(id):
+                raise flow.TransitionError(f"task id must be letters, digits, '.', '_' or '-': {id!r}")
+            try:
+                return self.tasks.get(id)
+            except KeyError:
+                pass
         for dep in depends or []:
             self.tasks.get(dep)  # 無いタスクには依存できない
-        task = Task(id="", title=title, purpose=purpose, source=source, priority=priority, depends=list(depends or []))
+        task = Task(id=id, title=title, purpose=purpose, source=source, priority=priority, depends=list(depends or []))
         task = self.tasks.create(task)
         for q in questions or []:
             task.add_question(**q)
@@ -309,7 +337,8 @@ class Engine:
 
     def handle_external(self, event: Event) -> None:
         if event.name == "task.created":
-            self.create(**event.data)
+            # task_id には利用者のタスク管理での ID を入れて送る。空なら algr が振る
+            self.create(**{"id": event.task_id, **event.data})
         elif event.name == "decision.resolved":
             self.resolve(event.task_id, event.data["answers"])
         elif event.name == "task.reopened":
@@ -407,7 +436,6 @@ class Engine:
         if status.state == RunState.COMPLETED:
             try:
                 result = parse(Role(role), status.result)
-                self._check_depends(getattr(result, "tasks", []))
                 self._check_retire(getattr(result, "retire", []))
             except ResultError as e:
                 result, status.message = None, f"bad result from {role}: {e}"
@@ -415,23 +443,19 @@ class Engine:
             self._job_failed(task, Role(role), status.message)
             return {"state": "failed", "message": status.message}  # 結果が読めなかったものも失敗として残す
         proposals = self._job_done(task, result)
-        # 別件の起票は、このタスクの保存が通ってから行う。ぶつかって結果を受け取り直しても二重に起票しない
-        for new in getattr(result, "tasks", []):
-            self.create(
-                new["title"],
+        # 別件はタスクにせず、イベントで返す。このタスクの保存が通ってから出すので、ぶつかって受け取り直しても二重に出ない
+        for new in getattr(result, "found", []):
+            self.notice(
+                "task.found",
+                self.tasks.get(task_id),
+                role=role,
+                title=new["title"],
                 purpose=new.get("purpose", ""),
                 questions=[{k: q[k] for k in QUESTION_FIELDS if k in q} for q in new.get("questions", [])],
-                source="auto",
-                priority=new.get("priority", 0),
                 depends=new.get("depends", []),
+                priority=new.get("priority", 0),
             )
         return {"proposals": proposals} if isinstance(result, DistillResult) else {}
-
-    def _check_depends(self, tasks: list[dict[str, Any]]) -> None:
-        known = {t.id for t in self.tasks.list()}
-        for new in tasks:
-            if unknown := sorted(set(new.get("depends", [])) - known):
-                raise ResultError(f"tasks depend on unknown tasks: {' '.join(unknown)}")
 
     def _check_retire(self, retire: list[dict[str, str]]) -> None:
         if retire and (unknown := sorted({r["rule_id"] for r in retire} - {r.id for r in self.decisions.rules()})):

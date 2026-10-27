@@ -11,7 +11,7 @@
 - "flaky" を含む：ファイル flaky-ok ができるまで終了コード 1
 - "fixme" を含む：修正依頼（feedback）を受けてから出した PR は "-fixed" で終わる
 - "metered" を含む：どの役も使ったトークン数（usage）を結果に添える
-- "spawn" を含む：このタスクに依存する別件を起票して PR を出す。"spawn-bad" は無いタスクに依存させる
+- "spawn" を含む：このタスクに依存する別件を返して PR を出す。"spawn-old" は旧い形（"tasks"）で返す
 
 レビューの役も、題名で振る舞いを変える。
 - "fixme" を含む：PR が "-fixed" で終わるまで修正を依頼する
@@ -51,9 +51,8 @@ elif job["role"] != "implement":
 elif "flaky" in title and not Path("flaky-ok").exists():
     sys.exit(1)
 elif "spawn" in title:
-    depends = ["I99"] if "spawn-bad" in title else [task["id"]]
-    follow = {"title": "follow-up", "questions": [{"text": "Q?", "topic": "f", "extra": 1}], "depends": depends}
-    write({"pr": f"pr/{task['id']}", "decisions": [], "tasks": [follow]})
+    follow = {"title": "follow-up", "questions": [{"text": "Q?", "topic": "f", "extra": 1}], "depends": [task["id"], "TASK-7"]}
+    write({"pr": f"pr/{task['id']}", "decisions": [], ("tasks" if "spawn-old" in title else "found"): [follow]})
 elif "fixme" in title and job["input"]["feedback"]:
     assert job["input"]["previous"]["pr"] == f"pr/{task['id']}"  # 前の PR から差分だけ直す
     write({"pr": f"pr/{task['id']}-fixed", "decisions": []})

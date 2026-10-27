@@ -22,6 +22,13 @@ def test_init(tmp_path, home, capsys):
     assert "already exists" in capsys.readouterr().err
 
 
+def test_new_takes_the_id_from_the_task_board(algr):
+    _, task, _ = algr("new", "Add search", "--id", "TASK-12", "-q", "How?")
+    assert (task["id"], [q["id"] for q in task["questions"]]) == ("TASK-12", ["TASK-12-1"])
+    code, _, err = algr("new", "bad", "--id", "../x")
+    assert code == 1 and "task id" in err["error"]
+
+
 def test_new_answer_and_list(algr):
     code, task, _ = algr("new", "Add login", "-q", "auth: How do users sign in?", "-q", "plain question")
     assert code == 0

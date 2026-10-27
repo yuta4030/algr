@@ -28,6 +28,7 @@ def table(header: str) -> list[list[str]]:
 def test_every_state_event_role_and_invariant_is_described():
     assert set(flow.STATE_HELP) == set(State)
     assert set(flow.EVENT_HELP) == set(flow.TRANSITIONS)
+    assert set(flow.NOTICE_HELP) == set(flow.NOTICES)
     assert set(ROLE_HELP) == set(Role)
     assert all(f.__doc__ for checks in flow.INVARIANTS.values() for f in checks)
     names = {c["name"] for c in commands()}
@@ -63,6 +64,15 @@ def test_readme_event_table_matches_the_code():
         assert handling == flow.EVENT_HELP[name], name
         keys = flow.EVENT_DATA[name]
         assert set(keys) <= set(re.findall(r"`([a-z_]+)`", payload)) if keys else payload == "—", name
+
+
+def test_readme_notice_table_matches_the_code():
+    rows = table("| イベント | ペイロード | 中身 |")
+    assert [r[0].strip("`") for r in rows] == list(flow.NOTICES)
+    for name, payload, help in rows:
+        name = name.strip("`")
+        assert help == flow.NOTICE_HELP[name], name
+        assert set(flow.NOTICES[name]) <= set(re.findall(r"`([a-z_]+)`", payload)), name
 
 
 def test_readme_role_table_matches_the_code():
