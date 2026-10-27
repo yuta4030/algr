@@ -46,7 +46,7 @@ algr は Algorithmic Development を回すためのフロー。ルールで判�
 ## フェーズ1（いま）
 - 済み：差し戻し・修正依頼・やり直し・マージのゲート、タスクの依存、楽観ロック、k2down の判断ストアアダプタ、
   常駐プロセス（`algr watch`）、エージェントのプロンプトと安全網のルール（`src/algr/prompts/`、`python -m algr.agent`）、指標（`algr stats`）
-- 残り：同期の起票（対話）、GitOps ボードと herdr のアダプタ、既存の作業記録からの初期ルール。決めることは `docs/open-questions.md`
+- 残り：フローの作り直し（判断待ちを役ごとに、マージのアダプタ、人の立場。`docs/design-flow-v2.md`）、GitOps ボードと herdr のアダプタ、既存の作業記録からの初期ルール。決めることは `docs/open-questions.md`
 - 完了条件：実タスクが起票とルールのレビューだけでマージまで流れ、差し戻し率が下がる傾向を `algr stats` で示す
 - algr 自身も algr で開発している。設定とルールは `.algr/`、回し方・次にやること・分かったことは `docs/dogfooding.md`
 
