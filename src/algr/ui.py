@@ -196,7 +196,7 @@ def trend(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def flow_counts(records: list[dict[str, Any]], tasks: list[Task]) -> dict[str, Any]:
     """遷移ごとの通過回数と、状態ごとの滞在時間の中央値。遷移の定義は flow.TRANSITIONS から取る。"""
-    events = [r for r in records if "name" in r]
+    events = [r for r in records if r.get("name") in flow.TRANSITIONS]  # 遷移しないイベント（task.found）は数えない
     counts: dict[tuple[str, str], int] = {}
     for e in events:
         if e["name"] != "task.created":

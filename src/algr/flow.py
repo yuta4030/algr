@@ -1,6 +1,7 @@
 """状態遷移とイベント、遷移ごとの不変条件。
 
 タスクは 8 つの状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
+遷移しないイベント（NOTICES）は、利用者のタスク管理に返す情報を hook に渡すためだけに出す。
 人が関わるのは needs-decision と failed、それにマージのゲートを置いたときの approved だけ。
 """
 
@@ -78,8 +79,18 @@ EVENT_HELP: dict[str, str] = {
     "task.reopened": "起票エージェントを起動する",
 }
 
+# 遷移しないイベント → ペイロードのキー。状態は動かさず、hook に渡すためだけに出す（既定の処理は無い）。
+# "from" には出したときの状態が入る。利用者のタスク管理へ書き戻すかどうかは hook が決める
+NOTICES: dict[str, tuple[str, ...]] = {
+    "task.found": ("role", "title", "purpose", "questions", "depends", "priority"),
+}
+
+NOTICE_HELP: dict[str, str] = {
+    "task.found": "エージェントが見つけた別件。1 件ごとに 1 回出す。algr はタスクにしない（起票するかは hook で決める）",
+}
+
 # hook の差し込み口。イベント名のほかに、すべてのイベントを受ける "*" を使える
-HOOK_POINTS = (*EVENTS, "*")
+HOOK_POINTS = (*EVENTS, *NOTICES, "*")
 
 
 class TransitionError(Exception):
@@ -143,7 +154,7 @@ def check(event: str, task: Task) -> State:
 
 
 def check_data(event: str, data: dict) -> None:
-    """event のペイロードが EVENT_DATA の形どおりかを確かめる。"""
-    want = {"from", *EVENT_DATA[event]}
+    """event のペイロードが EVENT_DATA（遷移しないイベントなら NOTICES）の形どおりかを確かめる。"""
+    want = {"from", *(NOTICES[event] if event in NOTICES else EVENT_DATA[event])}
     if set(data) != want:
         raise TransitionError(f"{event} carries {sorted(data)}, expected {sorted(want)}")

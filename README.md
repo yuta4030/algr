@@ -39,6 +39,7 @@ algr list --state needs-decision
 algr answer I1 I1-1="OAuth"                        # 答えると起票に戻る
 algr run                                           # 起票 → 実装 → レビュー → マージ
 algr new "ログアウトを足す" --depends I1             # I1 が done になるまで配車しない
+algr new "検索を足す" --id TASK-12                 # 利用者のタスク管理の ID をそのまま使う（決断 ID は TASK-12-1 …）
 algr depends I2 --add I3 --remove I1              # 依存先をあとから足す・外す
 algr reopen I2 --note "runner を直した"            # failed のタスクを起票に戻す
 algr merge I3                                      # マージのゲート（flow.merge = "human"）で承認済みをマージする
@@ -122,6 +123,13 @@ failed になった理由（`role` と `message`）はタスクの `failure` に
 
 トリガーが外から送れるのは、人の操作と同じ `task.created` / `decision.resolved` / `task.reopened` / `task.done` だけです。
 
+遷移しないイベントもあります（`flow.NOTICES`）。状態は動かさず、利用者のタスク管理に返す情報を hook に渡すためだけに出します。既定の処理はありません。
+`from` には出したときの状態が入ります。
+
+| イベント | ペイロード | 中身 |
+|---|---|---|
+| `task.found` | `role`、`title`、`purpose`、`questions`、`depends`、`priority` | エージェントが見つけた別件。1 件ごとに 1 回出す。algr はタスクにしない（起票するかは hook で決める） |
+
 ### hook
 
 hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべてのイベントを受けるなら `"*"`）ごとに並べます。
@@ -137,7 +145,7 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 
 遷移ごとに不変条件があります（例：ready にするには未決事項がゼロ、ルールで埋めた未決事項にはルールの ID が付いている）。
 
-タスクは 2 種類の判断を別々に持ちます。どちらも決断 ID（`I1-1`）をタスク内で通し番号で振ります。
+タスクは 2 種類の判断を別々に持ちます。どちらも決断 ID（`I1-1`。タスク管理の ID なら `TASK-12-1`）をタスク内で通し番号で振ります。
 
 - **未決事項**（`questions`）：起票で埋めるもの。ルールで埋まるか、人が答える
 - **判断**（`decisions`）：実装エージェントが実装中に下し、PR に載せるもの。ルールに従ったか（`rule_ids`）、未決事項の答えに従ったか（`question_ids`。根拠は未決事項の by を受け継ぐ）、根拠なく決めたか。PR を出し直すと新しい一覧で置き換わる
@@ -162,8 +170,8 @@ hook は `.algr/config.toml` の `[hooks]` に、イベント名（すべての�
 | `review` | review にいる間 | `{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}` |
 | `distill` | done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ） | `{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}` |
 
-`intake` と `implement` の結果には、見つけた別件を起票する `"tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
-別件は `source: auto` で起票され、`depends` には既にあるタスク（このタスクを含む）の ID を書きます。
+`intake` と `implement` の結果には、見つけた別件 `"found": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}]` を付けられます。
+algr は別件をタスクにせず、1 件ごとに `task.found` で返します。`depends` にはタスク管理での ID をそのまま書けます（algr は確かめません）。
 
 `objections` は判断への異議で、人に回します。`changes` はテスト失敗やバグなど判断以外の指摘で、実装に戻します。
 ジョブの入力（`input`）には今のルールが入り、実装には前の回の PR と判断（`previous`）と修正依頼（`feedback`）、
@@ -236,7 +244,7 @@ model = "haiku"
 
 | アダプタ | 役割 | 組み込み（フェイク） |
 |---|---|---|
-| `task` | タスクの読み書きとコメント | `fake.tasks`：1 件 1 ファイルの JSON |
+| `task` | フローを回すためのタスクの状態の読み書きとメモ（正本は利用者のタスク管理） | `fake.tasks`：1 件 1 ファイルの JSON |
 | `trigger` | 外部のイベントをフローのイベントに変換する | `fake.inbox`：ディレクトリに置いた JSON |
 | `executor` | エージェントをジョブとして起動する（`start(job)` / `status(job_id)` / `capacity()`） | `fake.process`：ローカルのコマンド |
 | `decisions` | ルールの提示、判断の記録と集計、ルールの提案（k2down 互換の操作） | `fake.rules`：rules.json と usage.jsonl。`k2down`：k2down の CLI |
@@ -249,6 +257,35 @@ model = "haiku"
 `input_tokens` はキャッシュを除いた分です。キャッシュの 2 項目は省いてかまいません。
 結果に `"turns"`（エージェントとの往復の回数）を添えると、`RunStatus.turns` で返し、`events.jsonl` のジョブの終了（`job`）に `turns` として残します。省くと 0 です。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。
+
+### 利用者のタスク管理とつなぐ
+
+何をやるかの正本は、利用者がもう持っているタスク管理（Backlog.md のボード、GitHub の issue など）です。algr はそこからタスクを受け取り、
+フローを回すための状態（状態、未決事項、判断、メモ）だけを手元（`task` アダプタ）に持ちます。
+
+- **algr はタスク管理を書き換えません。** algr を外しても、タスク管理はそのまま使えます
+- **受け取る**：トリガーが `task.created` の `task_id` にタスク管理での ID を入れて送ります（手で流すなら `algr new --id`）。
+  その ID がそのまま algr のタスク ID と決断 ID の頭になるので、環境を作り直しても記録がつながります。
+  同じ ID のタスクがもうあれば何もしません。トリガーは同じタスクを何度送ってもかまいません
+- **返す**：ステータスの切り替えや PR、マージ、見つけた別件はイベントで出します。タスク管理へ書き戻すなら、hook で利用者が書き戻します
+- **決着したあと**：done になったタスクは、再送されても作り直しません。あとは `algr stats` が `events.jsonl` を読むだけです
+- ID を渡さずに `algr new` で流したタスクは `I1`、`I2`… と振ります。どこにも書き戻さず、記録が要るなら hook で残します
+
+Backlog.md なら、hook はたとえば次のように書けます（algr 本体はこれを持ちません）。
+
+```python
+# .algr/hooks.py。[hooks] に "*" = [".algr/hooks.py:to_backlog"]
+import subprocess
+
+STATUS = {"task.started": "In Progress", "task.done": "Done"}
+
+
+def to_backlog(event, engine):
+    if event.name == "task.found":  # 見つけた別件をボードに起票する
+        subprocess.run(["backlog", "task", "create", event.data["title"], "-d", event.data["purpose"] or event.data["title"], "--plain"], check=True)
+    elif event.name in STATUS and event.task_id.startswith("TASK-"):  # ボードから来たタスクだけ、ステータスを書き戻す
+        subprocess.run(["backlog", "task", "edit", event.task_id, "-s", STATUS[event.name], "--plain"], check=True)
+```
 
 ### k2down
 

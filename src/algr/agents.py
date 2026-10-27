@@ -11,8 +11,9 @@
 - distill：  source は元になった決断 ID（report の候補から出した提案には無い）。rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く。
              人の答えのほか、input.report（落とす候補・書き直す候補）からも外す提案と言い直し（新しいルールと外す提案の対）を出す
 
-intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
-depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
+intake と implement の結果には、見つけた別件 "found": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
+algr は別件をタスクにせず、1 件ごとに遷移しないイベント task.found で返す。利用者のタスク管理に起票するかは hook が決める。
+depends にはタスク管理での ID をそのまま書いてよい（algr は確かめない）。
 """
 
 from __future__ import annotations
@@ -64,7 +65,7 @@ class Fill:
 class IntakeResult:
     fills: list[Fill] = field(default_factory=list)
     questions: list[dict[str, Any]] = field(default_factory=list)
-    tasks: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
+    found: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
 
 
 @dataclass
@@ -72,7 +73,7 @@ class ImplementResult:
     pr: str | None = None
     decisions: list[dict[str, Any]] = field(default_factory=list)
     returned: dict[str, Any] | None = None
-    tasks: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
+    found: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
 
 
 @dataclass
@@ -124,16 +125,19 @@ def _texts(items: Any, *keys: str) -> list[dict[str, Any]]:
     return items
 
 
-def _tasks(data: dict[str, Any]) -> list[dict[str, Any]]:
-    tasks = _texts(data.get("tasks", []), "title")
-    for t in tasks:
+def _found(data: dict[str, Any]) -> list[dict[str, Any]]:
+    # 旧い形（"tasks"）で返すエージェントのプロンプトも、別件として受け取る
+    found = _texts(data.get("found", data.get("tasks", [])), "title")
+    for t in found:
         depends = t.get("depends", [])
         if not isinstance(depends, list) or not all(isinstance(d, str) for d in depends):
-            raise ResultError("tasks[].depends must be a list of task IDs")
+            raise ResultError("found[].depends must be a list of task IDs")
         if not isinstance(t.get("priority", 0), int):
-            raise ResultError("tasks[].priority must be an integer")
+            raise ResultError("found[].priority must be an integer")
+        if not isinstance(t.get("purpose", ""), str):
+            raise ResultError("found[].purpose must be a string")
         _texts(t.get("questions", []), "text")
-    return tasks
+    return found
 
 
 def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResult | DistillResult:
@@ -144,19 +148,19 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
             Fill(f["question_id"], f["answer"], list(f.get("rule_ids", [])))
             for f in _texts(data.get("fills", []), "question_id", "answer")
         ]
-        return IntakeResult(fills, _texts(data.get("questions", []), "text"), _tasks(data))
+        return IntakeResult(fills, _texts(data.get("questions", []), "text"), _found(data))
     if role == Role.IMPLEMENT:
         if "returned" in data:
             returned = _need(data, "returned", dict)
             _texts([returned], "text")
-            return ImplementResult(returned=returned, tasks=_tasks(data))
+            return ImplementResult(returned=returned, found=_found(data))
         decisions = _texts(data.get("decisions", []), "text", "answer")
         for d in decisions:
             for key in ("rule_ids", "question_ids"):
                 ids = d.get(key, [])
                 if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
                     raise ResultError(f"decisions[].{key} must be a list of IDs")
-        return ImplementResult(pr=_need(data, "pr", str), decisions=decisions, tasks=_tasks(data))
+        return ImplementResult(pr=_need(data, "pr", str), decisions=decisions, found=_found(data))
     if role == Role.REVIEW:
         objections = data.get("objections", {})
         if not isinstance(objections, dict):

@@ -389,18 +389,79 @@ def test_distill_cannot_retire_unknown_rules(engine, repo):
     assert engine.notifier.sent()[-1]["message"] == "I1 distill failed: bad result from distill: retire unknown rules: R404"
 
 
-def test_agents_can_file_follow_up_tasks(engine):
+def test_follow_ups_are_returned_as_events_not_tasks(engine):
     engine.create("spawn")
-    run_until(engine, lambda: state(engine, "I1") == State.DONE and "I2" in [t.id for t in engine.tasks.list()])
-    follow = engine.tasks.get("I2")
-    assert (follow.title, follow.source, follow.depends) == ("follow-up", "auto", ["I1"])
-    assert [(q.text, q.topic) for q in follow.questions] == [("Q?", "f")]
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert [t.id for t in engine.tasks.list()] == ["I1"]  # algr は別件をタスクにしない
+    found = [e for e in engine.events if e.name == "task.found"]
+    assert [(e.task_id, e.data) for e in found] == [
+        (
+            "I1",
+            {
+                "from": "review",
+                "role": "implement",
+                "title": "follow-up",
+                "purpose": "",
+                "questions": [{"text": "Q?", "topic": "f"}],
+                "depends": ["I1", "TASK-7"],  # タスク管理の ID は確かめずにそのまま返す
+                "priority": 0,
+            },
+        )
+    ]
 
 
-def test_follow_up_with_unknown_dependency_fails_the_job(engine):
-    engine.create("spawn-bad")
-    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
-    assert "unknown tasks: I99" in engine.notifier.sent()[-1]["message"]
+def test_follow_ups_in_the_old_shape_are_still_returned(engine):
+    engine.create("spawn-old")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert [e.data["title"] for e in engine.events if e.name == "task.found"] == ["follow-up"]
+
+
+def test_hooks_can_catch_follow_ups(repo, home):
+    from conftest import write_config
+
+    from algr.config import Config
+    from algr.engine import Engine
+
+    (repo / ".algr" / "hooks.py").write_text(
+        "seen = []\ndef on_found(event, engine):\n    seen.append((event.task_id, event.data['title']))\n",
+        encoding="utf-8",
+    )
+    write_config(repo, '[hooks]\n"task.found" = [".algr/hooks.py:on_found"]\n')
+    engine = Engine.from_config(Config.load(repo))
+    engine.create("spawn")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert engine.hooks["task.found"][0].__globals__["seen"] == [("I1", "follow-up")]
+
+
+def test_tasks_take_the_id_from_the_users_task_board(engine):
+    task = engine.create("From the board", id="TASK-12", questions=[{"text": "Which?", "topic": "x"}])
+    assert task.id == "TASK-12"
+    run_until(engine, lambda: state(engine, "TASK-12") == State.NEEDS_DECISION)
+    engine.resolve("TASK-12", {"TASK-12-1": "this"})  # 決断 ID もタスク管理の ID から振る
+    run_until(engine, lambda: state(engine, "TASK-12") == State.DONE)
+    engine.create("quick")  # ID を渡さなければ algr が振る
+    assert [t.id for t in engine.tasks.list()] == ["I1", "TASK-12"]
+
+
+def test_resent_task_created_does_not_touch_the_settled_task(engine):
+    engine.trigger.push(Event("task.created", "TASK-3", {"title": "From the board"}))
+    engine.tick()
+    run_until(engine, lambda: state(engine, "TASK-3") == State.DONE)
+    settled = engine.tasks.get("TASK-3")
+    engine.trigger.push(Event("task.created", "TASK-3", {"title": "From the board"}))
+    engine.tick()
+    assert engine.tasks.get("TASK-3") == settled
+    assert [e.name for e in engine.events].count("task.created") == 1
+
+
+def test_task_ids_from_outside_must_be_safe_as_file_names(engine):
+    import pytest
+
+    from algr.flow import TransitionError
+
+    for bad in ("../x", "a b", "-x"):
+        with pytest.raises(TransitionError):
+            engine.create("bad", id=bad)
 
 
 def test_depends_can_be_changed_later(engine, repo):
