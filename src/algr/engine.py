@@ -410,10 +410,11 @@ class Engine:
     def _rules_for(self, role: Role, task: Task) -> list[Rule]:
         """ジョブに渡すルール。役の範囲のルールと範囲の無いルールを判断ストアから引く。
 
-        蒸留はルールの手入れをするので全ルールを渡す。レビューには、判断や未決事項が引いたルールも足す
+        蒸留はルールの手入れをするので全ルールを渡す。起票はほかの役の分まで未決事項をルールで埋めるので、
+        これも全ルールを渡す。レビューには、判断や未決事項が引いたルールも足す
         （ほかの役の範囲のルールを引いていても、知らないルールとして差し戻さないため）。
         """
-        if role == Role.DISTILL:
+        if role in (Role.DISTILL, Role.INTAKE):
             return self.decisions.rules()
         rules = self.decisions.rules(scope=str(role))
         if role == Role.REVIEW:

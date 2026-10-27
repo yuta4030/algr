@@ -584,7 +584,8 @@ def test_jobs_get_only_the_rules_in_their_scope(engine):
         job = json.loads((engine.executor.dir / job_id / "job.json").read_text(encoding="utf-8"))
         return [r["id"] for r in job["input"]["rules"]]
 
-    assert given("I1.intake.1") == ["R001"]
+    # 起票はほかの役の分まで未決事項を埋めるので、全ルールを渡す
+    assert given("I1.intake.1") == ["R001", "R002", "R003"]
     assert given("I1.implement.2") == ["R001", "R002"]
     assert given("I1.review.3") == ["R001", "R003"]
     # レビューには、判断が引いたほかの範囲のルールも足す。蒸留には全ルールを渡す
