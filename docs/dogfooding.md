@@ -45,6 +45,18 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 2. トークンを減らす。人が答えるたびに起票が走り直す（蒸留はタスクの done で 1 回にした）
 3. 2 件目のレポート（[ローカル試行レポート](https://claude.ai/artifact/TzZmvKswAYqvPoysiQWuP8)の続き）
 
+## 基準（2026-10-27、フロー・プロンプト・指標の作り直し（v2）を入れた時点）
+
+ここから先は、この値と比べて v2 のプロンプトが効いたかを見る。比べるのは、走り直し（ジョブ / 件、役ごとのトークン）と、判断待ちの状態ごとの聞いた回数。
+
+`algr stats`：タスク 14（done 9、failed の記録 3）、STP 33.3%、介入 1.29 回/件、判断待ちの中央値 2,055 秒、トークン 189 万/件、ジョブ 5.36 本/件。
+聞いた回数は waiting-intake 15・waiting-implement 2・waiting-review 1。差し戻し率は実装中 16.7%・レビュー 9.1%、修正依頼率 0%、PJ の修正依頼 0。
+役ごとのジョブは起票 34・実装 15・レビュー 12・蒸留 14、トークンは起票 440 万・実装 1,601 万・レビュー 553 万・蒸留 53 万。
+
+v2 より前の記録は旧いイベント名だったので、v2 の名前に書き換えてから数えた（`decision.requested` は `intake.asked`、`task.returned` と続く `decision.requested` は 1 つの `implement.asked`、
+`review.escalated` は `review.asked`、`decision.resolved` は直前に聞いた役の `*.answered`、`from` の `approved` は `merging`）。
+旧フローは答えるたびに起票から走り直したので、ジョブ数とトークンは v2 より多めに出る。聞いた回数は前後で同じ物差しで比べられる。
+
 ## 分かったこと（2026-10-24、最初の 2 件）
 
 最初の 2 件は PR #7 にまとめた。I1 は承認をイベント `review.approved` にして watch に出し、I2 は `Task.approved` をやめて状態 `approved` を足した。
