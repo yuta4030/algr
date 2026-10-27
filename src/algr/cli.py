@@ -188,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("proposal_id")
     p = sub.add_parser("decline", help="decline a rule proposal")
     p.add_argument("proposal_id")
-    sub.add_parser("stats", help="return rates, STP rate and human interventions from the event log")
+    sub.add_parser("stats", help="return rates, STP rate, client questions per waiting state, PJ change requests and jobs per role from the event log")
     p = sub.add_parser("ui", help="serve a page that shows tasks, progress and stats on 127.0.0.1 (Ctrl-C to stop)")
     p.add_argument("--port", type=int, default=8765)
     return parser

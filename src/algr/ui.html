@@ -621,6 +621,7 @@ function renderTrend() {
     ["人の介入 / 件", "t2", { labels, fmt: (v) => v.toFixed(1), series: [{ name: "介入 / 件", color: "var(--s0)", values: col("interventions_per_task") }] }],
     ["STP 率", "t3", { labels, fmt: pct, max: 1, series: [{ name: "STP", color: "var(--s0)", values: col("stp_rate") }] }],
     ["判断待ち（中央値）", "t4", { labels, fmt: (v) => dur(v), series: [{ name: "判断待ち", color: "var(--s0)", values: col("decision_wait_median_s") }] }],
+    ["ジョブ / 件", "t7", { labels, fmt: (v) => v.toFixed(1), series: [{ name: "ジョブ / 件", color: "var(--s0)", values: col("jobs_per_task") }] }],
     ["トークン / 件", "t5", { labels, fmt: (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)), series: [{ name: "トークン", color: "var(--s0)", values: col("tokens_per_task") }] }],
     ["起票数", "t6", { labels, fmt: (v) => Math.round(v), series: [{ name: "起票", color: "var(--s0)", values: col("tasks") }] }],
   ];
@@ -646,12 +647,15 @@ function renderMeta() {
   $("m-since").textContent = reviewedAt() ? `前回の見直し ${md(r.since)} から ${days} 日` : "前回の見直しの記録がないので、直近 7 日";
   const trendWord = cur.asked < prev.asked ? "減った" : cur.asked > prev.asked ? "増えた" : "変わらない";
   $("m-title").textContent = `クライアントに聞いた判断は ${prev.asked} 件から ${cur.asked} 件。${trendWord}`;
+  const askedBy = (w) => ["waiting-intake", "waiting-implement", "waiting-review"].map((k) => w.asked_by_state?.[k] ?? 0).join(" / ");
   const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`), num = (v) => (v === null || v === undefined ? "–" : Math.round(v * 10) / 10);
   $("m-tiles").innerHTML = [
     ["done になったタスク", cur.done, delta(cur.done, prev.done, { better: "" })],
     ["STP 率", pct(cur.stp_rate), delta(cur.stp_rate, prev.stp_rate, { fmt: pct })],
     ["人の介入 / 件", num(cur.interventions_per_task), delta(cur.interventions_per_task, prev.interventions_per_task, { better: "down", fmt: num })],
     ["差し戻し・実装", pct(cur.return_rate_implement), delta(cur.return_rate_implement, prev.return_rate_implement, { better: "down", fmt: pct })],
+    ["聞いた 起票/実装/レビュー", askedBy(cur), `<div class="d">前の期間 ${askedBy(prev)}</div>`],
+    ["PJ の修正依頼", cur.merge_changes_requested, delta(cur.merge_changes_requested, prev.merge_changes_requested, { better: "down" })],
   ].map(([k, v, d]) => `<div class="mtile"><div class="k">${k}</div><div class="v">${v}</div>${d}</div>`).join("");
 
   // ゲート：待たせているものだけを細い帯で。見直しとは時間の軸が違う

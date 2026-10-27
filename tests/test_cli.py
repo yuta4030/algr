@@ -145,6 +145,10 @@ def test_stats(algr):
     assert (s["tasks"], s["done"], s["stp_rate"], s["interventions_per_task"]) == (2, 2, 0.5, 0.5)
     assert (s["return_rate_implement"], s["return_rate_review"]) == (0.0, 0.0)
     assert s["decision_wait_median_s"] >= 0
+    # 聞いたのは起票だけ。どの判断待ちで聞いたかを状態ごとに数える
+    assert s["asked_by_state"] == {"waiting-intake": 1, "waiting-implement": 0, "waiting-review": 0}
+    assert s["merge_changes_requested"] == 0
+    assert s["jobs_by_role"]["implement"] == 2 and s["jobs_per_task"] >= 3
 
 
 def test_watch_stops_on_sigterm(repo):

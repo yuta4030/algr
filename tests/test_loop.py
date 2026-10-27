@@ -393,6 +393,14 @@ def test_project_changes_go_back_to_implement(engine):
     job = json.loads((engine.executor.dir / "I1.implement.4" / "job.json").read_text(encoding="utf-8"))
     assert (job["input"]["feedback"], engine.tasks.get("I1").reworks) == (["rename the flag"], 0)
 
+    # PJ の修正依頼は algr のレビューの見逃しとして数え、走り直したジョブも役ごとに出る
+    from algr import stats
+
+    summary = stats.summarize(stats.load(engine.event_log))
+    assert summary["merge_changes_requested"] == 1
+    assert summary["jobs_by_role"] == {"intake": 1, "implement": 2, "review": 2}
+    assert summary["jobs_per_task"] == 5.0
+
 
 def test_closed_without_merging_fails(engine):
     engine.merger = ScriptedMerge(MergeStatus(MergeState.CLOSED, message="closed by the project"))
