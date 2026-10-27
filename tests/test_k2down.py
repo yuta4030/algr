@@ -79,6 +79,19 @@ def test_report_keeps_only_what_distill_needs(store):
     assert store.proposals()[0]["decision"] == ""
 
 
+def test_rules_and_proposals_carry_a_scope(store):
+    store.propose("db: sqlite", "I1-3", scope="implement")
+    store.propose("auth: OAuth", "I1-1")
+    store.accept("P-001")
+    store.accept("P-002")
+    assert calls(store)[0] == ["propose", "add", "db: sqlite", "--decision", "I1-3", "--scope", "implement", "--json"]
+    # 範囲を渡すと、k2down がその範囲のルールと範囲の無いルールを返す
+    assert [r.id for r in store.rules(scope="implement")] == ["R001", "R002"]
+    assert calls(store)[-1] == ["list", "--json", "--scope", "implement"]
+    assert [r.id for r in store.rules(scope="review")] == ["R002"]
+    assert [r.id for r in store.rules()] == ["R001", "R002"]
+
+
 def test_old_k2down_is_refused_once_at_the_first_call(store, monkeypatch):
     monkeypatch.setenv("FAKE_K2DOWN_VERSION", "k2down 0.3.0")
     with pytest.raises(K2downError, match=r"k2down 0.4.0 or later is required \(found k2down 0.3.0\)"):

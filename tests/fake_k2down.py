@@ -26,9 +26,9 @@ def option(name):
     return args[args.index(name) + 1] if name in args else None
 
 
-def add_rule(text):
+def add_rule(text, scope=None):
     rule_id = f"R{len(rules) + 1:03d}"
-    rules.append({"id": rule_id, "rule": text, "parent": "N000"})
+    rules.append({"id": rule_id, "rule": text, "parent": "N000", **({"scope": scope} if scope else {})})
     rules_file.write_text(json.dumps(rules), encoding="utf-8")
     return rule_id
 
@@ -47,9 +47,12 @@ def pending(proposal_id):
 
 
 if command == "list":
-    print(json.dumps({"rules": [{"id": "N000", "rule": "全体", "parent": None}, *rules]}))
+    # --scope を付けると、その範囲のルールと範囲の無いルールだけを返す
+    scope = option("--scope")
+    listed = [r for r in rules if scope is None or r.get("scope") in (None, scope)]
+    print(json.dumps({"rules": [{"id": "N000", "rule": "全体", "parent": None}, *listed]}))
 elif command == "add":
-    print(add_rule(args[0]))
+    print(add_rule(args[0], option("--scope")))
 elif command == "retire":
     rules_file.write_text(json.dumps([r for r in rules if r["id"] != args[0]]), encoding="utf-8")
 elif command == "apply" and "R404" in args:
@@ -59,7 +62,7 @@ elif command == "propose":
     proposal = {"kind": kind, ("rule" if kind == "add" else "rule_id"): target}
     if option("--decision") is not None:
         proposal["decision"] = option("--decision")
-    for key in ("source", "reason"):
+    for key in ("source", "reason", "scope"):
         if option(f"--{key}") is not None:
             proposal[key] = option(f"--{key}")
     same = next((p for p in proposals["proposals"] if p["kind"] == kind and p.get("rule", p.get("rule_id")) == target), None)
@@ -78,7 +81,7 @@ elif command == "accept":
         rule_id = proposal["rule_id"]
         rules_file.write_text(json.dumps([r for r in rules if r["id"] != rule_id]), encoding="utf-8")
     else:
-        rule_id = add_rule(proposal["rule"])
+        rule_id = add_rule(proposal["rule"], proposal.get("scope"))
     proposals["proposals"].remove(proposal)
     proposals_file.write_text(json.dumps(proposals), encoding="utf-8")
     print(json.dumps({"accepted": [{"proposal": proposal["id"], "kind": proposal["kind"], "rule_id": rule_id}]}))

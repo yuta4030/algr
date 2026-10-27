@@ -80,10 +80,11 @@ class K2down:
             raise K2downError(f"{name}: {_error(proc.stderr.strip() or proc.stdout.strip())}")
         return proc.stdout.strip()
 
-    def rules(self) -> list[Rule]:
+    def rules(self, scope: str | None = None) -> list[Rule]:
         if not (self.dir / "rules.json").exists():
             return []
-        data = json.loads(self._run("list", "--json"))
+        # --scope を付けると、k2down がその範囲のルールと範囲の無いルールを返す
+        data = json.loads(self._run("list", "--json", *(["--scope", scope] if scope else [])))
         return [Rule(r["id"], r["rule"]) for r in data["rules"] if r["id"].startswith("R")]
 
     def apply(self, decision: str, problem: str, rule_ids: list[str]) -> None:
@@ -112,8 +113,9 @@ class K2down:
 
     # --- 提案（k2down の propose / proposals / accept / decline） ---------------
 
-    def propose(self, rule: str, source: str) -> str:
-        return json.loads(self._run("propose", "add", _one_line(rule), *_decision(source), "--json"))["id"]
+    def propose(self, rule: str, source: str, scope: str = "") -> str:
+        args = ["propose", "add", _one_line(rule), *_decision(source), *(["--scope", scope] if scope else []), "--json"]
+        return json.loads(self._run(*args))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
         args = ["propose", "retire", rule_id, *_decision(source), "--reason", _one_line(reason), "--json"]
