@@ -145,6 +145,7 @@ def test_review_shows_what_changed_and_why_each_proposal(gated):
 
     r = ui.review(gated)
     assert (r["current"]["done"], r["current"]["asked"], r["previous"]["asked"]) == (1, 1, 0)
+    assert r["current"]["asked_by_state"] == {"waiting-intake": 1, "waiting-implement": 0, "waiting-review": 0}
     [p] = r["proposals"]
     assert (p["id"], p["job"]) == ("P001", "I1.distill.5")
     assert p["evidence"] == {"topic": "db", "answers": [{"id": "I1-1", "text": "Where?", "answer": "sqlite", "by": "human"}]}

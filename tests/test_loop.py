@@ -393,6 +393,14 @@ def test_project_changes_go_back_to_implement(engine):
     job = json.loads((engine.executor.dir / "I1.implement.4" / "job.json").read_text(encoding="utf-8"))
     assert (job["input"]["feedback"], engine.tasks.get("I1").reworks) == (["rename the flag"], 0)
 
+    # PJ の修正依頼は algr のレビューの見逃しとして数え、走り直したジョブも役ごとに出る
+    from algr import stats
+
+    summary = stats.summarize(stats.load(engine.event_log))
+    assert summary["merge_changes_requested"] == 1
+    assert summary["jobs_by_role"] == {"intake": 1, "implement": 2, "review": 2}
+    assert summary["jobs_per_task"] == 5.0
+
 
 def test_closed_without_merging_fails(engine):
     engine.merger = ScriptedMerge(MergeStatus(MergeState.CLOSED, message="closed by the project"))
@@ -527,6 +535,7 @@ def test_token_usage_and_agent_settings(engine, repo):
     summary = stats.summarize(stats.load(repo / ".algr" / "state" / "events.jsonl"))
     assert summary["tokens_per_task"] == 330.0
     assert summary["tokens_per_task_by_kind"] == {"input_tokens": 300.0, "output_tokens": 30.0}
+    assert summary["tokens_by_role"] == {"intake": 110, "implement": 110, "review": 110}
 
 
 def test_watch_keeps_dispatching_until_stopped(engine):

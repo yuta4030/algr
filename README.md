@@ -57,7 +57,12 @@ algr accept P-a2m4n                                # 提案をルールにする
 
 `algr stats` は `.algr/state/events.jsonl` から指標を集計します。実装中とレビューでの差し戻し率、修正依頼率、
 STP 率（回答・やり直しが一度も入らずに done になった割合）、タスクあたりの立場の介入回数、判断待ちから答えまでの時間の中央値、
-タスクあたりのトークン数（合計と、キャッシュの読み込み・書き込みを分けた項目ごと）を出します。実装中とレビューでの差し戻し率は、それぞれ `implement.asked` と `review.asked` が出たタスクの割合です。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`。蒸留なら読んだ未決事項の `questions` と report の候補の数の `report` も持つ）と終了（`job`。使ったトークン数の `usage` と往復の回数の `turns`、失敗の理由の `message`、蒸留が出した提案の `proposals` を持つ）、hook の失敗（`hook_error`）、マージのアダプタの失敗（`merge_error`）も時刻付きで残ります。
+クライアントに聞いた回数（判断待ちの状態ごと。`asked_by_state`）、PJ メンバーの修正依頼の回数（`merge.changes_requested`。algr のレビューが見逃した数。`merge_changes_requested`）、
+役ごとのジョブの本数とタスクあたりの本数（`jobs_by_role`・`jobs_per_task`。走り直しがどれだけ減ったか）、
+役ごとのトークン数（`tokens_by_role`。起票で増えた分を実装・レビューの減りで取り戻せたか）、
+タスクあたりのトークン数（合計と、キャッシュの読み込み・書き込みを分けた項目ごと）を出します。実装中とレビューでの差し戻し率は、それぞれ `implement.asked` と `review.asked` が出たタスクの割合です。
+聞いた回数は、どの判断待ち（`waiting-intake` / `waiting-implement` / `waiting-review`）で多いかを見て、どこのルールが足りないかを探すのに使います。
+役ごとのジョブの本数とトークン数は方針のタスク（`algr distill`）の蒸留を含みません。集計にはログを使いますが、フローの判定には使いません。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`。蒸留なら読んだ未決事項の `questions` と report の候補の数の `report` も持つ）と終了（`job`。使ったトークン数の `usage` と往復の回数の `turns`、失敗の理由の `message`、蒸留が出した提案の `proposals` を持つ）、hook の失敗（`hook_error`）、マージのアダプタの失敗（`merge_error`）も時刻付きで残ります。
 
 `algr watch` は常駐して tick を回し続けます（`--interval` 秒ごと）。トリガーの取り込みと ready の配車が止まらないようにするためのプロセスで、
 起きたイベントを 1 行ずつ出します。SIGINT（Ctrl-C）か SIGTERM で、いまの tick を終えてから止まります。
@@ -69,9 +74,9 @@ STP 率（回答・やり直しが一度も入らずに done になった割合�
 
 - クライアント（いまの仕事）：あなたに聞きたいこと（判断待ちへの回答と、失敗したタスクのやり直し）、頼んだことの進み具合といま誰の手にあるか、今日届いたもの。3 秒ごとに読み直します。
   ルールや提案は出さず、メタプログラマーの番は件数だけを出します。
-- メタプログラマー（ルールを育てる）：前回の見直しからの変化（クライアントに聞いた回数、STP 率、介入、差し戻しを前の期間と並べる）、
+- メタプログラマー（ルールを育てる）：前回の見直しからの変化（クライアントに聞いた回数とその判断待ちの状態ごとの内訳、STP 率、介入、差し戻し、PJ の修正依頼を前の期間と並べる）、
   失敗（原因を見る。やり直すかはクライアント）、決めること（提案を 1 件ずつ、根拠になったクライアントの答えや report と一緒に）、ルールの効き、まだルールでない論点、
-  蒸留エージェントの動き（読んだクライアントの答えと report の候補、出した提案、失敗）。サブページに推移（起票した週ごとの差し戻し率・介入回数・STP 率など）、
+  蒸留エージェントの動き（読んだクライアントの答えと report の候補、出した提案、失敗）。サブページに推移（起票した週ごとの差し戻し率・介入回数・STP 率・ジョブ / 件など）、
   フロー（遷移ごとの通過回数と状態ごとの滞在時間）、ジョブ（タスクごとのジョブの時間とトークン数）があります。
   前回の見直しの時刻は「見直しを終える」でブラウザに覚え（無ければ直近 7 日）、`/api/review?since=` に渡します。コアは見直しの状態を持ちません。
 
@@ -273,7 +278,7 @@ model = "haiku"
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。
 結果に `"usage": {"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"}` を添えると、使ったトークン数としてタスクの `usage` に足し上げ、
-`algr stats` の `tokens_per_task`（全項目の合計）と `tokens_per_task_by_kind`（項目ごと）に出します。項目の意味は Claude の API の usage と同じで、
+`algr stats` の `tokens_per_task`（全項目の合計）と `tokens_per_task_by_kind`（項目ごと）、`tokens_by_role`（役ごとの全項目の合計）に出します。項目の意味は Claude の API の usage と同じで、
 `input_tokens` はキャッシュを除いた分です。キャッシュの 2 項目は省いてかまいません。
 結果に `"turns"`（エージェントとの往復の回数）を添えると、`RunStatus.turns` で返し、`events.jsonl` のジョブの終了（`job`）に `turns` として残します。省くと 0 です。
 `command` を省略すると、AI を使わず決まりで判断するフェイクのエージェント（`python -m algr.fake_agent`）が走ります。

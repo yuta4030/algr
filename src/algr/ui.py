@@ -283,10 +283,11 @@ def history(engine: Engine) -> dict[str, Any]:
 
 
 def _window(records: list[dict[str, Any]], start: datetime, end: datetime) -> dict[str, Any]:
-    """期間に done になったタスクの指標と、期間に人に上がった回数。"""
+    """期間に done になったタスクの指標と、期間に人に上がった回数（判断待ちの状態ごとにも）。"""
     done = {r["task_id"] for r in records if r.get("name") == "task.done" and start <= _ts(r["ts"]) < end}
-    asked = sum(1 for r in records if r.get("name") in stats.ASKED_EVENTS and start <= _ts(r["ts"]) < end)
-    return {**stats.summarize([r for r in records if r.get("task_id") in done]), "asked": asked}
+    by_state = stats.asked_by_state([r for r in records if "name" in r and start <= _ts(r["ts"]) < end])
+    summary = stats.summarize([r for r in records if r.get("task_id") in done])
+    return {**summary, "asked": sum(by_state.values()), "asked_by_state": by_state}
 
 
 def review(engine: Engine, since: datetime | None = None) -> dict[str, Any]:
