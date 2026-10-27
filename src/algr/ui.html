@@ -65,7 +65,7 @@ h2 .n { background: var(--track); color: var(--ink); border-radius: 99px; paddin
 .row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badges { display: inline-flex; gap: 4px; margin-left: 6px; }
 .badge { font-size: 11px; color: var(--mute); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
 .steps.labels span { font-size: 10px; text-align: center; color: var(--mute); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .step { height: 8px; border-radius: 2px; background: var(--track); }
 .step.past { background: color-mix(in srgb, var(--ok) 55%, var(--track)); }
@@ -155,6 +155,7 @@ section > h2.big { font-size: 17px; color: var(--ink); letter-spacing: 0; font-w
 .arrived li { display: flex; gap: 10px; cursor: pointer; }
 .arrived .t { color: var(--mute); width: 40px; flex: none; }
 .handoff { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 1px dashed var(--line); text-decoration: none; color: var(--mute); font-size: 13px; }
+.handoff[hidden] { display: none; }
 .handoff b { font-size: 12px; background: var(--meta); color: var(--meta-ink); border-radius: 99px; padding: 0 8px; }
 .step.now.meta { background: var(--meta); }
 
@@ -301,7 +302,7 @@ main.page { display: block; }
 <main class="view" id="view-now">
   <div>
     <section><h2 class="big">あなたに聞きたいこと <span class="n human" id="ask-n">0</span></h2>
-      <p class="lead mute">ルールで決まらなかった点だけが届きます。答えると起票に戻って流れ続けます。</p><div id="asks"></div></section>
+      <p class="lead mute">ルールで決まらなかった点と、通せなかった依頼だけが届きます。答えると、聞いた役（起票・実装・レビュー）が答えを持って走り直します。</p><div id="asks"></div></section>
     <section><div class="shead"><h2 class="big">頼んだこと</h2><span class="mute" id="active-n"></span><span class="hint mono mute">algr new "..."</span></div><div class="rows" id="rows"></div></section>
   </div>
   <div>
@@ -331,27 +332,28 @@ main.page { display: block; }
     <p>algr は Algorithmic Development を回すためのフロー。人はルール（戦略）を書き、タスクはルールで判断を埋めたうえで、人の手に触れずにマージまで流れる。人は例外だけを受ける。</p>
     <p>algr 本体が持つのは、状態遷移とイベント、遷移ごとの不変条件、エージェントのプロンプトだけ。タスク管理・エージェントを動かす場所・判断の保存はアダプタの向こうに置き（いまはファイル、ローカルのプロセス、k2down）、判断はエージェントがする。本体は結果で状態を動かし、記録するだけ。</p></section>
   <section><h2>2 つの層</h2><div class="stage"><div data-diagram="layers"></div>
-    <div class="prose"><p>処理の層では、起票・実装・レビューのエージェントがルールを読んでタスクを流す。ルールで決まらない判断だけが人に上がる。</p>
-    <p>人の答えを含むすべての判断は記録に残る。タスクが done になると、蒸留エージェントが人の答えと report（判断の集計）からルールの提案を出す。</p>
-    <p>メタプログラマーが accept した提案だけがルールになり、次のタスクでは同じ論点が起票で埋まる。使うほど人に上がる判断が減っていく。</p></div></div></section>
-  <section class="prose"><h2>人の立場</h2>
-    <p>人は処理の中から抜け、外側で 2 つの立場に立つ。人に聞く判断は、文脈を一番持っている起票に寄せる。</p>
+    <div class="prose"><p>処理の層では、起票・実装・レビューのエージェントがルールを読んでタスクを流す。ルールで決まらない判断だけが、聞いた役の判断待ちでクライアントに渡る。</p>
+    <p>クライアントの答えを含むすべての判断は記録に残る。タスクが done になると、蒸留エージェントがクライアントの答えと report（判断の集計）からルールの提案を出す。</p>
+    <p>メタプログラマーが accept した提案だけがルールになり、次のタスクでは同じ論点がルールで埋まる。使うほどクライアントに渡る判断が減っていく。</p></div></div></section>
+  <section class="prose"><h2>立場</h2>
+    <p>処理の外側に 2 つの立場がある。処理の層の問いにはクライアントが、メタの層（ルール）にはメタプログラマーが答える。立場を人が埋めるか、その横の AI が埋めるかは algr は区別しない。</p>
     <table class="htable"><tr><th>立場</th><th>やること</th><th>答える判断</th></tr>
-      <tr><td>クライアント</td><td>何をやるか、目的、こだわり度を出す</td><td>「何を大事にするか」が問われるもの</td></tr>
-      <tr><td>メタプログラマー</td><td>何を自動で通してよいかを決める。ルールの受け入れ、マージのゲート、公開 IF の境界を持つ</td><td>「どこまで任せてよいか」が問われるもの</td></tr></table>
-    <p class="mute">それぞれの操作は下の「人の操作」にある。</p></section>
+      <tr><td>クライアント</td><td>やりたいことをまとめ、タスクに分けて順番を決める。あとは判断待ちに答え、通せなかった依頼（<code>failed</code>）をやり直すかやめるかを決める。目的を変えるときは、やめて新しく依頼する</td><td>タスクの問いすべて（要望したものを出してよいか、マージしてよいか、公開 IF を変えてよいかも含む）</td></tr>
+      <tr><td>メタプログラマー</td><td>タスクには答えない。クライアントの答えの記録、<code>algr stats</code>、report を見てルールを直す</td><td>どの判断をルールに任せるか</td></tr></table>
+    <p class="mute">それぞれの操作は下の「立場の操作」にある。PR をレビュー・マージするチーム（PJ）は立場の外で、フローの外の手続きとして扱う。</p></section>
   <section><h2>状態とイベント</h2><div class="stage"><div data-diagram="flow"></div>
-    <div class="prose"><p>主経路は <code>intake</code> → <code>ready</code> → <code>in-progress</code> → <code>review</code> → <code>done</code>。</p>
-    <p>人が関わるのは <code>needs-decision</code> と <code>failed</code>、それにマージのゲート（<code>flow.merge = "human"</code>）を置いたときの <code>approved</code> だけ。</p>
-    <p>人が答えると必ず <code>intake</code> に戻り、起票エージェントがルールを当て直してから主経路に合流する。</p>
+    <div class="prose"><p>主経路は <code>intake</code> → <code>ready</code> → <code>in-progress</code> → <code>review</code> → <code>merging</code> → <code>done</code>。</p>
+    <p>立場に渡るのは、起票・実装・レビューそれぞれの判断待ち（<code>waiting-intake</code> / <code>waiting-implement</code> / <code>waiting-review</code>）と <code>failed</code> だけ。</p>
+    <p>答えがそろうと聞いた役の状態に戻り、その役だけが要約から走り直す。起票には戻さない。レビューが聞いたときは、答えを持ったレビューが承認か修正依頼かを決める。</p>
+    <p>承認するとマージのアダプタに頼み、<code>merging</code> でマージ先に入るのを待つ。PJ の修正依頼が来たら実装に戻る。</p>
     <p>イベントは遷移ごとに 1 つ出て、そこに hook を差し込める。hook は既定の処理のあとに呼ばれる観察者で、遷移を止めない。遷移ごとの実績は<a href="#flow">フロー</a>で見られる。</p></div></div></section>
   <section><h2>ルールを育てる（メタプログラミング）</h2><div class="stage"><div data-diagram="meta"></div>
     <div class="prose"><p>メタプログラマーは処理の中には入らず、ルールとゲートを通して何を自動で通すかを決める。</p>
     <p><b>提案を決める。</b>蒸留エージェントは、done になったタスクの人の答えと <code>algr distill</code> で受けた方針から足す提案を出す。<code>algr accept</code> したものだけがルールになり、<code>algr decline</code> した提案も記録に残る。</p>
     <p><b>見直しも提案で届く。</b>判断ごとに、従ったルール・レビューの異議・当たり外れが記録に残る。蒸留エージェントは <code>k2down report</code> の落とす候補（一度も当たらない）、書き直す候補（外れや異議が多い）、ぶつかる組から、外す提案と言い直しの提案も出す。メタプログラマーは report を読み込まなくても、提案を決めればよい。</p>
-    <p><b>ゲートを持つ。</b>マージのゲート（<code>approved</code>）、失敗からのやり直し（<code>algr reopen</code>）、公開 IF の境界もメタプログラマーの持ち物。</p>
+    <p><b>任せる範囲を決める。</b>マージの前に止めるかもルールで決まる（最初は「マージ前に必ずクライアントに聞く」から始め、記録を見て狭める）。失敗の原因がフロー側（実行環境やプロンプト）にあれば直す。やり直す（<code>algr reopen</code>）かは、依頼したクライアントが決める。</p>
     <p>この層のことは、画面上の切り替えで「メタプログラマー」に入って見る。前回の見直しからの変化、ゲート、決めること（提案と根拠）、ルールの効き、蒸留エージェントの動きがまとまっている。</p>
-        <p class="mute">ルールの変更は rules.json の差分として PR に載る。そのマージを人の確認とする。</p></div></div></section>
+        <p class="mute">ルールの変更は rules.json の差分として PR に載る。</p></div></div></section>
   <section class="prose"><h2>ID</h2><table class="htable"><tr><th>対象</th><th>形</th><th>振るところ</th></tr>
     <tr><td>タスク</td><td><code>I12</code></td><td>タスクのアダプタ</td></tr>
     <tr><td>未決事項・判断（決断 ID）</td><td><code>I12-3</code></td><td>タスクの中の通し番号。k2down の <code>--decision</code> にそのまま渡す</td></tr>
@@ -381,7 +383,9 @@ function distillIO(d) {
     : d.state !== "completed" ? "" : d.proposals.length ? `提案 ${d.proposals.map((p) => p.open ? `<b title="未決定">${p.id}</b>` : `<span title="決定済み">${p.id}</span>`).join(" ")}` : "提案なし";
   return `${esc(read || "読むものなし")}${out ? ` → ${out}` : ""}`;
 }
-const ACTION = { answer: "回答する", reopen: "やり直す", merge: "マージする" };
+const ACTION = { answer: "回答する", reopen: "やり直す", cancel: "やめる" };
+const waiting = (t) => data.flow.waiting.includes(t.state);
+const ASKED = ["intake.asked", "implement.asked", "review.asked"], ANSWERED = ["intake.answered", "implement.answered", "review.answered"];
 let data = null, openId = null;
 
 function ago(ts) {
@@ -397,10 +401,11 @@ const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", min
 // いま誰の手にあるか：色の名前と短い言葉
 function who(t) {
   const p = t.progress;
-  if (t.state === "failed") return ["bad", "失敗"];  // やり直すかはメタプログラマーが決める
+  if (t.state === "failed") return ["bad", "失敗"];  // やり直すかはクライアントが決める
   if (t.state === "done") return p.roles.includes("distill") ? ["agent", "蒸留"] : ["done", "完了"];
-  if (t.state === "approved") return ["meta", "マージ待ち"];  // マージのゲートはメタプログラマーの番
+  if (t.state === "canceled") return ["queue", "やめた"];
   if (p.waiting === "human") return ["human", "あなた"];
+  if (p.waiting === "merge") return ["queue", "マージ先待ち"];
   if (p.waiting === "agent") return ["agent", p.roles.filter((r) => r !== "distill").map((r) => ROLE[r]).join("・")];
   if (p.waiting === "deps") return ["deps", p.blocked_by.join(" ")];
   return ["queue", "待ち"];
@@ -412,6 +417,7 @@ function steps(t) {
   return stages.map((s, i) => {
     let c = "step";
     if (t.state === "done") c += " done";
+    else if (t.state === "canceled") c += i <= at ? " past" : "";
     else if (i < at) c += " past";
     else if (i === at) c += " now " + kind;
     return `<i class="${c}" title="${s}"></i>`;
@@ -420,8 +426,8 @@ function steps(t) {
 
 function badges(t) {
   const p = t.progress, b = [];
-  if (p.asked) b.push(`<span class="badge" title="人に聞いた回数">? ${p.asked}</span>`);
-  if (p.returned) b.push(`<span class="badge" title="実装からの差し戻し">↩ ${p.returned}</span>`);
+  if (p.asked) b.push(`<span class="badge" title="あなたに聞いた回数">? ${p.asked}</span>`);
+  if (p.returned) b.push(`<span class="badge" title="実装から聞いた回数">↩ ${p.returned}</span>`);
   if (p.changes) b.push(`<span class="badge" title="修正依頼">✎ ${p.changes}</span>`);
   return b.length ? `<span class="badges">${b.join("")}</span>` : "";
 }
@@ -439,44 +445,46 @@ function row(t) {
 
 const DAY = 86400e3;
 const within = (ts, ms) => ts && Date.parse(data.now) - Date.parse(ts) < ms;
-// メタプログラマーの番：まだ決めていない提案と、ゲート（マージ待ち・失敗）
-const gates = () => data.tasks.filter((t) => t.state === "approved" || t.state === "failed");
+// メタプログラマーが見るもの：まだ決めていない提案と、失敗（原因がフロー側なら直す。やり直すかはクライアント）
+const gates = () => data.tasks.filter((t) => t.state === "failed");
 
 function render() {
   const tasks = data.tasks;
   $("updated").textContent = clock(data.now);
-  const asks = tasks.filter((t) => t.state === "needs-decision"), metaN = data.proposals.length + gates().length;
+  const asks = tasks.filter((t) => waiting(t) || t.state === "failed"), metaN = data.proposals.length + gates().length;
   for (const [id, n] of [["client-n", asks.length], ["meta-n", metaN]]) { $(id).textContent = n; $(id).hidden = !n; }
 
-  // あなたに聞きたいこと：クライアントの番は回答だけ。やり直しとマージはメタの画面で
+  // あなたに聞きたいこと：判断待ちへの回答と、失敗したタスクをやり直すか
   $("ask-n").textContent = asks.length;
   $("asks").innerHTML = asks.length ? `<div class="asks">${asks.map((t) => {
     const qs = t.questions.filter((q) => q.answer === null);
     return `<div class="ask" data-id="${t.id}">
       <div class="top"><span class="mono mute">${t.id}</span><span class="title">${esc(t.title)}</span></div>
+      ${t.progress.failure ? `<div class="q">${ROLE[t.progress.failure.role] || esc(t.progress.failure.role)}で失敗：${esc(t.progress.failure.message)}</div>` : ""}
       ${qs.map((q) => `<div class="q"><span class="mono mute">${q.id}</span>　${esc(q.text)}</div>
         ${q.options.length || q.recommended ? `<div class="opts">${(q.options.length ? q.options : [q.recommended]).map((o) => `<span class="opt ${o === q.recommended ? "rec" : ""}">${esc(o)}${o === q.recommended ? "（推奨）" : ""}</span>`).join("")}</div>` : ""}`).join("")}
-      <div class="cli"><code class="mono">${esc(t.actions[0]?.cli || "")}</code><button class="btn copy" data-cli="${esc(t.actions[0]?.cli || "")}">copy</button></div>
+      ${t.actions.map((a) => `<div class="cli"><code class="mono">${esc(a.cli)}</code><button class="btn copy" data-cli="${esc(a.cli)}">copy</button></div>`).join("")}
     </div>`;
   }).join("")}</div>` : `<div class="clear"><span class="mark">✓</span>なし</div>`;
 
   // 頼んだこと
-  const order = { human: 0, agent: 1, deps: 2, queue: 3 };
-  const active = tasks.filter((t) => t.state !== "done").sort((a, b) =>
+  const order = { human: 0, agent: 1, deps: 2, merge: 3, queue: 4 };
+  const ended = (t) => t.state === "done" || t.state === "canceled";
+  const active = tasks.filter((t) => !ended(t)).sort((a, b) =>
     (a.state === "failed") - (b.state === "failed") || order[a.progress.waiting] - order[b.progress.waiting] ||
     data.flow.stages.indexOf(b.progress.stage) - data.flow.stages.indexOf(a.progress.stage));
-  const done = tasks.filter((t) => t.state === "done" && t.source !== "policy").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
+  const done = tasks.filter((t) => ended(t) && t.source !== "policy").sort((a, b) => (b.progress.since || "").localeCompare(a.progress.since || ""));
   $("active-n").textContent = `動いている ${active.length} 件`;
   const head = `<div class="row head"><span></span><span></span><span class="steps labels">${data.flow.stages.map((s) => `<span>${s}</span>`).join("")}</span><span></span><span></span></div>`;
   $("rows").innerHTML = head + (active.length ? active.map(row).join("") : `<div class="empty">動いているタスクはありません</div>`) +
-    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done ${done.length}</summary>${done.map(row).join("")}</details>` : "");
+    (done.length ? `<details class="done-list"${$("rows").querySelector("details[open]") ? " open" : ""}><summary>done・canceled ${done.length}</summary>${done.map(row).join("")}</details>` : "");
 
   // 今日届いたもの・この 7 日
-  const today = done.filter((t) => within(t.progress.since, DAY));
+  const today = done.filter((t) => t.state === "done" && within(t.progress.since, DAY));
   $("arrived").innerHTML = today.map((t) => `<li data-id="${t.id}"><span class="t">${clock(t.progress.since)}</span>
     <span><b>${t.id} ${esc(t.title)}</b> がマージされた${t.progress.asked ? ` · あなたへの問い ${t.progress.asked} 回` : " · あなたへの問いなし"}</span></li>`).join("") || `<li class="mute">まだありません</li>`;
-  const answered = tasks.flatMap((t) => t.events).filter((e) => e.name === "decision.resolved" && within(e.ts, 7 * DAY)).length;
-  $("week").innerHTML = `<div class="tile"><div class="v">${done.filter((t) => within(t.progress.since, 7 * DAY)).length}</div><div class="k">届いた</div></div>
+  const answered = tasks.flatMap((t) => t.events).filter((e) => ANSWERED.includes(e.name) && within(e.ts, 7 * DAY)).length;
+  $("week").innerHTML = `<div class="tile"><div class="v">${done.filter((t) => t.state === "done" && within(t.progress.since, 7 * DAY)).length}</div><div class="k">届いた</div></div>
     <div class="tile"><div class="v">${answered}</div><div class="k">あなたが答えた</div></div>`;
   $("handoff").hidden = !metaN;
   $("handoff").innerHTML = `<b>${metaN}</b><span>メタプログラマーの番があります。中身はメタの画面で</span>`;
@@ -499,7 +507,7 @@ function detail(id) {
   const [kind, label] = who(t);
   const qs = t.questions.map((q) => `<div class="item"><span class="mono mute">${q.id}</span><span>${esc(q.text)}${q.answer !== null ? `<br><span class="a">${esc(q.answer)}</span>` : q.recommended ? `<br><span class="mute">推奨 ${esc(q.recommended)}</span>` : ""}</span>${q.answer === null ? `<span class="ground open">未決</span>` : ground(q.rule_ids, q.by)}</div>`).join("");
   const ds = t.decisions.map((d) => `<div class="item"><span class="mono mute">${d.id}</span><span>${esc(d.text)}<br><span class="a">${esc(d.answer)}</span></span>${ground(d.rule_ids, d.by, d.question_ids)}</div>`).join("");
-  const tone = (n) => (["decision.requested", "review.escalated", "decision.resolved", "task.reopened"].includes(n) ? "human" : n === "task.failed" ? "bad" : n === "task.done" ? "ok" : "");
+  const tone = (n) => ([...ASKED, ...ANSWERED, "task.reopened"].includes(n) ? "human" : n === "task.failed" ? "bad" : n === "task.done" ? "ok" : "");
   const usage = Object.values(t.usage || {}).reduce((a, b) => a + b, 0);
   $("drawer").innerHTML = `
     <button class="close" id="close" aria-label="閉じる">×</button>
@@ -510,7 +518,7 @@ function detail(id) {
     <div class="kv">
       <span class="mute">いま</span><span class="who"><i class="dot ${kind}"></i>${esc(label)} <span class="mute">· ${ago(t.progress.since)}</span></span>
       ${t.purpose ? `<span class="mute">目的</span><span>${esc(t.purpose)}</span>` : ""}
-      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.state === "approved" ? " ✓" : ""}</span>` : ""}
+      ${t.pr ? `<span class="mute">PR</span><span class="mono">${esc(t.pr)}${t.state === "merging" ? " ✓" : ""}</span>` : ""}
       ${t.depends.length ? `<span class="mute">依存</span><span class="mono">${t.depends.join(" ")}</span>` : ""}
       ${usage ? `<span class="mute">トークン</span><span>${usage.toLocaleString()}</span>` : ""}
     </div>
@@ -637,7 +645,7 @@ function renderMeta() {
   const days = Math.max(1, Math.round((Date.parse(r.now) - Date.parse(r.since)) / DAY));
   $("m-since").textContent = reviewedAt() ? `前回の見直し ${md(r.since)} から ${days} 日` : "前回の見直しの記録がないので、直近 7 日";
   const trendWord = cur.asked < prev.asked ? "減った" : cur.asked > prev.asked ? "増えた" : "変わらない";
-  $("m-title").textContent = `人に上がった判断は ${prev.asked} 件から ${cur.asked} 件。${trendWord}`;
+  $("m-title").textContent = `クライアントに聞いた判断は ${prev.asked} 件から ${cur.asked} 件。${trendWord}`;
   const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`), num = (v) => (v === null || v === undefined ? "–" : Math.round(v * 10) / 10);
   $("m-tiles").innerHTML = [
     ["done になったタスク", cur.done, delta(cur.done, prev.done, { better: "" })],
@@ -648,7 +656,7 @@ function renderMeta() {
 
   // ゲート：待たせているものだけを細い帯で。見直しとは時間の軸が違う
   const g = gates();
-  $("m-gate").innerHTML = `<span class="k">ゲート — 待たせているもの ${g.length}</span>` + (g.map((t) => `<span class="g" data-id="${t.id}"><span class="mono mute">${t.id}</span>${esc(t.title)} · ${t.state === "approved" ? "マージを待っている" : `${ROLE[t.progress.failure?.role] || ""}で失敗`}</span>`).join("") || `<span class="mute">なし</span>`);
+  $("m-gate").innerHTML = `<span class="k">失敗 — 原因を見る（やり直すかはクライアント） ${g.length}</span>` + (g.map((t) => `<span class="g" data-id="${t.id}"><span class="mono mute">${t.id}</span>${esc(t.title)} · ${ROLE[t.progress.failure?.role] || ""}で失敗</span>`).join("") || `<span class="mute">なし</span>`);
 
   // 決めること：提案を 1 件ずつ、根拠と一緒に
   const ps = r.proposals;
@@ -712,8 +720,9 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-// 状態の置き場所。主経路を横に、人の番を上下に置く
-const POS = { intake: [90, 200], ready: [270, 200], "in-progress": [450, 200], review: [630, 200], approved: [720, 290], done: [810, 200], "needs-decision": [360, 60], failed: [450, 345] };
+// 状態の置き場所。主経路を横に、判断待ちを聞いた役の上に、失敗を下に置く
+const POS = { intake: [80, 200], ready: [230, 200], "in-progress": [380, 200], review: [530, 200], merging: [680, 200], done: [830, 200],
+  "waiting-intake": [80, 60], "waiting-implement": [380, 60], "waiting-review": [530, 60], failed: [455, 345], canceled: [830, 345] };
 function renderFlow() {
   const f = hist.flow, max = Math.max(1, ...f.edges.map((e) => e.count)), NW = 120, NH = 58;
   const stages = data.flow.stages;
@@ -723,12 +732,13 @@ function renderFlow() {
   };
   let edges = "", labels = "";
   for (const e of f.edges) {
+    if (e.to === "canceled" && !e.count) continue;  // やめるはどこからでも入れるので、通っていない矢印は描かない
     const a = POS[e.from], b = POS[e.to];
     const forward = stages.indexOf(e.to) - stages.indexOf(e.from) === 1 && stages.includes(e.from);
     const k = forward ? 0 : 46, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
     const c = [(a[0] + b[0]) / 2 + (dy / len) * k, (a[1] + b[1]) / 2 - (dx / len) * k];
     const p0 = clip(a, c), p1 = clip(b, c);
-    const cls = e.count === 0 ? "zero" : ["needs-decision"].includes(e.to) ? "human" : e.to === "failed" ? "bad" : "";
+    const cls = e.count === 0 ? "zero" : data.flow.waiting.includes(e.to) ? "human" : e.to === "failed" ? "bad" : "";
     const w = e.count ? 1.5 + 7 * Math.sqrt(e.count / max) : 1.2;
     edges += `<path class="edge ${cls}" d="M${p0} Q${c} ${p1}" stroke-width="${w}" marker-end="url(#arrow)" data-tip="${e.event} · ${e.from} → ${e.to} · ${e.count}"/>`;
     if (e.count) {
@@ -737,7 +747,7 @@ function renderFlow() {
     }
   }
   const nodes = f.states.map((s) => {
-    const [x, y] = POS[s.state], cls = s.state === "needs-decision" ? "human" : s.state;
+    const [x, y] = POS[s.state], cls = data.flow.waiting.includes(s.state) ? "human" : s.state;
     return `<g class="node ${cls}" data-tip="${s.state} · いま ${s.now} · 滞在の中央値 ${dur(s.stay_median_s)}"><rect x="${x - NW / 2}" y="${y - NH / 2}" width="${NW}" height="${NH}" rx="10"/>
       <text class="name" x="${x - NW / 2 + 10}" y="${y - 10}">${s.state}</text><text class="now" x="${x - NW / 2 + 10}" y="${y + 18}">${s.now}</text>
       <text class="stay" x="${x + NW / 2 - 10}" y="${y + 18}" text-anchor="end">${s.stay_median_s === null ? "" : "⏱ " + dur(s.stay_median_s)}</text></g>`;
@@ -776,7 +786,7 @@ function renderHelp() {
   const h = help, by = (s) => h.commands.filter((c) => c.stance === s);
   const cmds = (list) => list.map((c) => `<tr><td><code>algr ${esc(c.name)}</code></td><td>${esc(c.help)}</td></tr>`).join("");
   $("help").innerHTML = `
-  <section><h2>人の操作</h2><table class="htable">
+  <section><h2>立場の操作</h2><table class="htable">
     ${h.stances.map((s) => `<tr><th colspan="2">${esc(s.name)}</th></tr>${cmds(by(s.name))}`).join("")}
     <tr><th colspan="2">見る・回す</th></tr>${cmds(by(""))}</table></section>
   <section><h2>状態</h2><table class="htable">${h.states.map((s) => `<tr><td><code>${esc(s.state)}</code></td><td>${esc(s.help)}</td></tr>`).join("")}</table></section>

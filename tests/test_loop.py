@@ -9,52 +9,60 @@ import time
 import pytest
 from conftest import run_until, state
 
+from algr.adapters import AdapterError, MergeState, MergeStatus
 from algr.flow import TransitionError
-from algr.model import Event, State, Task
+from algr.model import Event, State
 
 
 def names(engine, task_id):
     return [e.name for e in engine.events if e.task_id == task_id]
 
 
+def started_roles(engine):
+    lines = engine.event_log.read_text(encoding="utf-8").splitlines()
+    return [r["role"] for r in map(json.loads, lines) if "job_started" in r]
+
+
 def test_loop_goes_around_once(engine):
-    # 起票：起票エージェントがジョブとして走り、ルールが無いので人に聞く
+    # 起票：起票エージェントがジョブとして走り、ルールが無いのでクライアントに聞く
     task = engine.create("Add login", purpose="sign in", questions=[{"text": "How do users sign in?", "topic": "auth"}])
     assert task.state == State.INTAKE  # 起票エージェントはまだ走っている
     assert list(task.jobs) == ["intake"]
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
     task = engine.tasks.get("I1")
     assert [q.id for q in task.open_questions()] == ["I1-1"]
-    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision: I1-1"}]  # 人に聞くときは必ず知らせる
+    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision from intake: I1-1"}]  # 聞くときは必ず知らせる
 
-    # 人が答えると起票に戻り、ready になる。マージされると、蒸留エージェントが人の答えをルールとして提案する
+    # 答えると起票に戻り、ready になる。マージされると、蒸留エージェントが答えをルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
     assert engine.decisions.proposals() == [{"id": "P001", "kind": "add", "rule": "auth: OAuth", "decision": "I1-1"}]
 
-    # 実行：配車され、実装、レビューを経てマージまで進む
+    # 実行：配車され、実装、レビューを経て、マージのアダプタに頼んでマージ先に入る
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
     assert task.pr == "pr/I1"
     assert task.jobs == {}
     assert names(engine, "I1") == [
         "task.created",
-        "decision.requested",
-        "decision.resolved",
+        "intake.asked",
+        "intake.answered",
         "task.ready",
         "task.started",
         "task.submitted",
+        "review.approved",
         "task.done",
     ]
+    assert engine.merger.requests() == {"I1": "pr/I1"}
     assert engine.tasks.comments("I1") == ["merged: pr/I1"]
 
-    # 蒸留：提案が受け入れられると、同じ論点は次から人に上がらない（Touchless）
+    # 蒸留：提案が受け入れられると、同じ論点は次からクライアントに聞かない（Touchless）
     assert engine.decisions.accept("P001") == "R001"
     engine.create("Add signup", questions=[{"text": "How do users sign in?", "topic": "auth"}])
     run_until(engine, lambda: state(engine, "I2") == State.DONE)
     q = engine.tasks.get("I2").questions[0]
     assert (q.answer, q.by, q.rule_ids) == ("OAuth", "rule", ["R001"])
-    assert "decision.requested" not in names(engine, "I2")
+    assert "intake.asked" not in names(engine, "I2")
 
     usage = [(u["event"], u["decision"]) for u in engine.decisions.usage() if "decision" in u]
     assert usage == [
@@ -70,25 +78,25 @@ def test_loop_goes_around_once(engine):
 def test_questions_and_decisions_are_kept_apart(engine):
     engine.decisions.add("auth: OAuth")
     engine.create("cite rules", questions=[{"text": "Session store?", "topic": "session"}])
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
     engine.resolve("I1", {"I1-1": "redis"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
-    # 未決事項は起票で人やルールが埋めたもの、判断は実装エージェントが PR に載せたもの
+    # 未決事項はクライアントやルールが埋めたもの、判断は実装エージェントが PR に載せたもの
     assert [(q.id, q.answer, q.by) for q in task.questions] == [("I1-1", "redis", "human")]
     assert [(d.id, d.answer, d.rule_ids, task.decided_by(d)) for d in task.decisions] == [("I1-2", "OAuth", ["R001"], "rule")]
 
 
 def test_decision_following_a_human_answer_is_grounded_by_it(engine):
     engine.create("follow answers", questions=[{"text": "Session store?", "topic": "session"}])
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
     engine.resolve("I1", {"I1-1": "redis"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
-    # 人の答えに従った判断は根拠なしにならず、レビューも通る。判断ストアには重ねて記録しない
+    # クライアントの答えに従った判断は根拠なしにならず、レビューも通る。判断ストアには重ねて記録しない
     d = task.decision("I1-2")
     assert (d.rule_ids, d.question_ids, task.decided_by(d)) == ([], ["I1-1"], "human")
-    assert "review.escalated" not in names(engine, "I1")
+    assert "review.asked" not in names(engine, "I1")
     assert {u["decision"] for u in engine.decisions.usage() if "decision" in u} == {"I1-1"}
 
 
@@ -120,50 +128,70 @@ def test_events_are_logged_to_state_dir(engine, repo):
         "task.ready",
         "task.started",
         "task.submitted",
+        "review.approved",
         "task.done",
     ]
 
 
-def test_returned_during_implementation(engine):
+def test_implement_asks_and_runs_again_with_the_answer(engine):
     engine.create("Store sessions needs-db")
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_IMPLEMENT)
     task = engine.tasks.get("I1")
     assert task.open_questions()[0].text == "Which database?"
     assert task.open_questions()[0].recommended == "sqlite"
-    # 差し戻しは起票に戻り、ルールで埋まらないので人に上がる
-    assert names(engine, "I1")[-3:] == ["task.started", "task.returned", "decision.requested"]
-    assert engine.notifier.sent()[-1]["message"] == "I1 needs a decision: I1-1"
+    assert names(engine, "I1")[-2:] == ["task.started", "implement.asked"]
+    assert engine.notifier.sent()[-1]["message"] == "I1 needs a decision from implement: I1-1"
 
+    # 答えると起票には戻らず、実装だけが答えを持って走り直す
     engine.resolve("I1", {"I1-1": "sqlite"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert names(engine, "I1")[3:] == ["implement.asked", "implement.answered", "task.submitted", "review.approved", "task.done"]
+    assert started_roles(engine) == ["intake", "implement", "implement", "review", "distill"]
 
 
-def test_review_escalates_decisions_without_rules(engine):
+def test_review_asks_about_decisions_without_rules(engine):
     engine.create("Refactor guess")
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_REVIEW)
     task = engine.tasks.get("I1")
-    assert "review.escalated" in names(engine, "I1")
-    # 根拠の無い判断 I1-1 は、推奨案付きの未決事項 I1-2 として起票に差し戻される
-    assert [(d.id, task.decided_by(d)) for d in task.decisions] == [("I1-1", "agent")]
+    assert names(engine, "I1")[-1] == "review.asked"
+    assert engine.events[-1].data == {"from": "review", "channel": "inline", "questions": ["I1-2"], "reasons": {"I1-1": "decided without a rule"}}
+    # 根拠の無い判断 I1-1 は、推奨案付きの未決事項 I1-2 になり、判断はその答えに従うものになる
     q = task.question("I1-2")
     assert (q.text, q.open, q.recommended) == ("Module name", True, "util")
+    assert task.decision("I1-1").question_ids == ["I1-2"]
 
+    # 答えると起票にも実装にも戻らず、レビューが答えを持って走り直して承認する
     engine.resolve("I1", {"I1-2": "helpers"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
     task = engine.tasks.get("I1")
-    assert task.decisions == []  # やり直しの実装では、前の回の判断は捨てられる
-    assert task.question("I1-2").by == "human"
+    assert names(engine, "I1")[-4:] == ["review.asked", "review.answered", "review.approved", "task.done"]
+    assert started_roles(engine) == ["intake", "implement", "review", "review", "distill"]
+    assert (task.question("I1-2").by, task.decided_by(task.decision("I1-1"))) == ("human", "human")
+
+
+def test_review_can_ask_before_merging(engine):
+    # ルール「マージ前に必ずクライアントに聞く」に当たったレビューは、判断に結び付かない問いを聞く
+    engine.create("ask-merge")
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_REVIEW)
+    task = engine.tasks.get("I1")
+    assert [(q.id, q.text, q.asked) for q in task.open_questions()] == [("I1-1", "Merge it?", True)]
+    assert engine.events[-1].data["reasons"] == {}
+    assert engine.merger.requests() == {}
+    engine.resolve("I1", {"I1-1": "yes"})
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
 
 
 def test_review_objection_to_a_rule_records_reject(engine):
     engine.create("cite rules")  # R001 を引用するが、R001 は存在しない
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_REVIEW)
     events = [(u["event"], u["decision"]) for u in engine.decisions.usage() if "decision" in u]
-    # ルールに従った判断 I1-1 は却下として記録し、人には新しい未決事項 I1-2 として聞く
+    # ルールに従った判断 I1-1 は却下として記録し、クライアントには新しい未決事項 I1-2 として聞く
     assert events == [("applied", "I1-1"), ("rejected", "I1-1"), ("escalated", "I1-2")]
+    # 却下されたルールは判断から外す。マージされても hit にしない
+    assert engine.tasks.get("I1").decision("I1-1").rule_ids == []
 
 
-def test_failed_run_goes_to_human(engine):
+def test_failed_run_is_notified(engine):
     engine.create("Will fail")
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
     assert engine.notifier.sent()[-1]["message"] == "I1 failed: exit 1"
@@ -177,8 +205,9 @@ def test_malformed_result_fails_the_task(engine):
 
 def test_queue_channel_notifies(engine):
     engine.create("From CI", source="auto", questions=[{"text": "Retry or fix?", "topic": "ci"}])
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
-    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision: I1-1"}]
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
+    assert engine.notifier.sent() == [{"task_id": "I1", "message": "I1 needs a decision from intake: I1-1"}]
+    assert engine.events[-1].data["channel"] == "queue"
 
 
 def test_dispatch_respects_priority_and_parallelism(engine):
@@ -220,8 +249,9 @@ def test_run_returns_when_idle(engine):
 def test_trigger_events_enter_the_flow(engine):
     engine.trigger.push(Event("task.created", "", {"title": "From inbox", "questions": [{"text": "Q", "topic": "x"}]}))
     engine.tick()
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
-    engine.trigger.push(Event("decision.resolved", "I1", {"answers": {"I1-1": "yes"}}))
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
+    # 回答はどの役が聞いたかを知らなくてよい。判断待ちの状態から intake.answered が起きる
+    engine.trigger.push(Event("task.answered", "I1", {"answers": {"I1-1": "yes"}}))
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
 
 
@@ -244,13 +274,14 @@ def test_hooks_run_after_default_handler(repo, home):
 
 def test_events_carry_their_payload_and_source_state(engine):
     task = engine.create("payload", questions=[{"text": "Which?", "topic": "x"}])
-    run_until(engine, lambda: state(engine, task.id) == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, task.id) == State.WAITING_INTAKE)
     engine.resolve(task.id, {f"{task.id}-1": "this"})
     run_until(engine, lambda: state(engine, task.id) == State.DONE)
     by_name = {e.name: e.data for e in engine.events}
     assert by_name["task.created"] == {"from": "", "source": "human"}
-    assert by_name["decision.resolved"] == {"from": "needs-decision", "questions": [f"{task.id}-1"]}
-    assert by_name["task.done"]["from"] == "review"
+    assert by_name["intake.answered"] == {"from": "waiting-intake", "questions": [f"{task.id}-1"]}
+    assert by_name["review.approved"] == {"from": "review", "pr": f"pr/{task.id}"}
+    assert by_name["task.done"] == {"from": "merging", "pr": f"pr/{task.id}"}
 
 
 def test_failing_hook_does_not_stop_the_flow(repo, home):
@@ -290,19 +321,10 @@ def test_stale_save_is_rejected(engine):
     assert engine.tasks.get("I1").purpose == "changed elsewhere"
 
 
-def test_returned_question_is_filled_by_rule_before_asking(engine):
-    engine.decisions.add("db: postgres")
-    engine.create("Store sessions needs-db")
-    run_until(engine, lambda: state(engine, "I1") == State.DONE)
-    assert "decision.requested" not in names(engine, "I1")
-    q = engine.tasks.get("I1").question("I1-1")
-    assert (q.answer, q.by) == ("postgres", "rule")
-
-
 def test_review_requests_changes_and_implement_fixes(engine):
     engine.create("fixme")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
-    assert names(engine, "I1")[-4:] == ["task.submitted", "review.changes_requested", "task.submitted", "task.done"]
+    assert names(engine, "I1")[-5:] == ["task.submitted", "review.changes_requested", "task.submitted", "review.approved", "task.done"]
     task = engine.tasks.get("I1")
     assert (task.pr, task.reworks, task.feedback) == ("pr/I1-fixed", 1, [])
 
@@ -315,7 +337,7 @@ def test_rework_has_a_limit(engine):
     assert engine.notifier.sent()[-1]["message"].startswith("I1 failed: review asked for changes more than 1 times")
 
 
-def test_human_reopens_a_failed_task(engine, repo):
+def test_reopen_a_failed_task(engine, repo):
     engine.create("flaky")
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
     (repo / "flaky-ok").write_text("", encoding="utf-8")
@@ -325,35 +347,96 @@ def test_human_reopens_a_failed_task(engine, repo):
     assert reopened[0].data == {"from": "failed", "note": "fixed the runner"}
 
 
-def test_human_settled_questions_are_not_reopened_by_review(engine):
+def test_client_settled_questions_are_not_reopened_by_review(engine):
     engine.create("contrarian", questions=[{"text": "Which?", "topic": "x"}])
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
     engine.resolve("I1", {"I1-1": "this"})
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
-    assert "review.escalated" not in names(engine, "I1")
+    assert "review.asked" not in names(engine, "I1")
 
 
-def test_merge_gate_waits_for_human(engine):
-    engine.merge_gate = True
-    engine.create("gated")
-    run_until(engine, lambda: state(engine, "I1") == State.APPROVED)
-    engine.tick()
-    task = engine.tasks.get("I1")
-    assert (task.state, task.jobs) == (State.APPROVED, {})  # 承認済みのあいだはレビューを起動し直さない
-    assert engine.notifier.sent()[-1]["message"] == "I1 is approved and waiting for merge: pr/I1"
-    approved = [e for e in engine.events if e.name == "review.approved"]
-    assert [e.data for e in approved] == [{"from": "review", "pr": "pr/I1"}]  # 承認の瞬間に 1 回だけ
-    engine.merge("I1")
-    assert state(engine, "I1") == State.DONE
-    assert engine.events[-1].data == {"from": "approved", "pr": "pr/I1", "merged_by": "human"}
+class ScriptedMerge:
+    """マージのアダプタの代わり。status は statuses を頭から 1 つずつ返し、尽きたら最後を返し続ける。"""
+
+    def __init__(self, *statuses):
+        self.statuses, self.requested = list(statuses), []
+
+    def request(self, task):
+        if (task.id, task.pr) not in self.requested:
+            self.requested.append((task.id, task.pr))
+
+    def status(self, task):
+        status = self.statuses[0] if len(self.statuses) == 1 else self.statuses.pop(0)
+        if isinstance(status, Exception):
+            raise status
+        return status
 
 
-def test_old_task_file_with_approved_flag_reads_as_approved_state():
-    old = {"id": "I1", "title": "t", "state": "review", "approved": True}
-    task = Task.from_dict(old)
-    assert task.state == State.APPROVED
-    assert "approved" not in task.to_dict()
-    assert Task.from_dict({**old, "approved": False}).state == State.REVIEW
+def test_merging_waits_until_the_merge_target_has_it(engine):
+    engine.merger = ScriptedMerge(MergeStatus(MergeState.OPEN), MergeStatus(MergeState.OPEN), MergeStatus(MergeState.MERGED))
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.MERGING)
+    assert engine.tasks.get("I1").jobs == {}  # merging のあいだはジョブを起動しない
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert engine.merger.requested == [("I1", "pr/I1")]  # tick ごとに頼み直しても、二重には頼まない
+
+
+def test_project_changes_go_back_to_implement(engine):
+    engine.merger = ScriptedMerge(MergeStatus(MergeState.CHANGES, ["rename the flag"]), MergeStatus(MergeState.MERGED))
+    engine.max_rework = 0
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    changes = [e for e in engine.events if e.name == "merge.changes_requested"]
+    assert [e.data for e in changes] == [{"from": "merging", "changes": ["rename the flag"]}]
+    # PJ の指摘は feedback として実装に渡り、直した PR がもう一度レビューを通る。max_rework には数えない
+    assert started_roles(engine) == ["intake", "implement", "review", "implement", "review"]
+    job = json.loads((engine.executor.dir / "I1.implement.4" / "job.json").read_text(encoding="utf-8"))
+    assert (job["input"]["feedback"], engine.tasks.get("I1").reworks) == (["rename the flag"], 0)
+
+
+def test_closed_without_merging_fails(engine):
+    engine.merger = ScriptedMerge(MergeStatus(MergeState.CLOSED, message="closed by the project"))
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.FAILED)
+    assert engine.tasks.get("I1").failure == {"role": "merge", "message": "closed by the project"}
+    assert engine.notifier.sent()[-1]["message"] == "I1 failed: closed by the project"
+
+
+def test_merge_adapter_errors_are_retried(engine):
+    engine.merger = ScriptedMerge(AdapterError("network down"), MergeStatus(MergeState.MERGED))
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert "network down" in engine.event_log.read_text(encoding="utf-8")
+
+
+def test_cancel_stops_running_jobs_and_drops_their_results(engine, repo):
+    engine.create("slow one")
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS)
+    job_id = engine.tasks.get("I1").jobs["implement"]
+    engine.cancel("I1", note="split into two")
+    (repo / "stop").write_text("", encoding="utf-8")
+    run_until(engine, lambda: not engine.tasks.get("I1").jobs)
+    assert state(engine, "I1") == State.CANCELED  # 止めたジョブの結果は捨てられ、状態は動かない
+    assert (engine.executor.dir / job_id / "exit").read_text(encoding="utf-8") == "143"
+    assert engine.events[-1].data == {"from": "in-progress", "note": "split into two"}
+
+
+def test_cancel_a_waiting_or_failed_task_and_tell_its_dependents(engine):
+    engine.create("ask", questions=[{"text": "Which?"}])
+    engine.create("after", depends=["I1"])
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
+    engine.cancel("I1")
+    assert engine.notifier.sent()[-1]["message"] == "I1 was canceled (blocks I2)"
+    engine.create("Will fail")
+    run_until(engine, lambda: state(engine, "I3") == State.FAILED)
+    assert engine.cancel("I3").state == State.CANCELED
+
+
+def test_done_cannot_be_canceled(engine):
+    engine.create("one")
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    with pytest.raises(TransitionError, match="I1 is done and cannot be canceled"):
+        engine.cancel("I1")
 
 
 def test_dependent_task_waits_until_dependency_is_done(engine, repo):

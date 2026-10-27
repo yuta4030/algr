@@ -6,7 +6,8 @@
 2. 人の答えがルールになり、2 件目の同じ論点は人に聞かずにルールで埋まる（Touchless）
 3. `algr stats` と記録（`events.jsonl`、ジョブのログ）で、何が起きたかを後から追える
 
-PR の代わりにローカルのブランチを使い、マージは人が行う（`flow.merge = "human"`）。auto のマージを実際に行う口はまだ無いため。
+PR の代わりにローカルのブランチを使い、マージはクライアント（ここでは人）が手で行う。マージのアダプタには、ブランチが main に入ったかを見るだけの
+algr リポジトリの `.algr/adapters/branch.py` を使う（砂場の `.algr/adapters/` に写す）。
 
 ## 0. 用意するもの
 
@@ -48,7 +49,10 @@ git add -A && git commit -m init
 [flow]
 max_parallel = 1        # 作業ツリーが 1 つなので、実装は 1 件ずつ
 max_rework = 2
-merge = "human"         # レビューが通ったら止まり、人がマージする
+
+[adapters.merge]
+use = ".algr/adapters/branch.py:MergedInto"  # レビューが通ったら merging で止まり、algr/<ID> が main に入るのを待つ
+into = "main"
 
 [adapters.executor]
 use = "fake.process"
@@ -106,19 +110,18 @@ algr new "引き算の関数 sub を足す" --purpose "calc に sub(a, b) を足
   -q "error: 数値でない入力が来たときどうするか"
 ```
 
-起票エージェントが走り、ルールが無いので人に聞いてくる（A に `I1 decision.requested`）。
+起票エージェントが走り、ルールが無いのでクライアントに聞いてくる（A に `I1 intake.asked`。`algr list --state waiting` でも拾える）。
 
 ```sh
 algr show I1                                     # 起票エージェントが足した未決事項もここに出る
 algr answer I1 I1-1="TypeError を投げる"          # 残りの未決事項も同じように答える
 ```
 
-答えると起票に戻り、実装・レビューが流れる。レビューが通ると `[review, approved]` で止まる。
+答えがそろうと起票に戻り、実装・レビューが流れる。レビューが通ると `merging` で止まる。
 
 ```sh
 git log --oneline main..algr/I1 && git diff main...algr/I1
-git merge algr/I1
-algr merge I1                                    # done にし、ルールに従った判断を hit として記録する。蒸留エージェントが走る
+git merge algr/I1                                # 次の tick でアダプタが見つけて done にし、ルールに従った判断を hit として記録する。蒸留エージェントが走る
 algr run                                         # 蒸留が終わるまで回す
 
 algr proposals                                   # 蒸留エージェントのルール提案
@@ -134,7 +137,7 @@ algr new "割り算の関数 div を足す" --purpose "calc に div(a, b) を足
   -q "error: 数値でない入力が来たときどうするか"
 ```
 
-`decision.requested` を挟まずに実装まで進めば成功。`algr show I2` で、その未決事項が `[R-h4n8c]` のようなルール ID で埋まっていることを見る。
+`intake.asked` を挟まずに実装まで進めば成功。`algr show I2` で、その未決事項が `[R-h4n8c]` のようなルール ID で埋まっていることを見る。
 レビューが通ったら 1 件目と同じようにマージする。
 
 ## 5. 振り返る

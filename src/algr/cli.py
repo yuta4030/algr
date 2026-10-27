@@ -1,6 +1,6 @@
 """algr のコマンドライン。
 
-人はクライアントとして起票し、未決事項に答える。それ以外はフローが流す。
+クライアントは起票し、判断待ちの未決事項に答える。メタプログラマーはルールを直す。それ以外はフローが流す。
 既定の出力は LLM にも読みやすいプレーンテキスト。--json で JSON を返す。
 """
 
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from algr import __version__, stats, ui
+from algr import __version__, flow, stats, ui
 from algr.adapters import AdapterError, Conflict
 from algr.config import CONFIG_FILE, Config, ConfigError
 from algr.engine import Engine
@@ -21,16 +21,16 @@ from algr.model import Event, State, Task
 
 DESCRIPTION = """\
 algr: a flow for Algorithmic Development.
-Rules fill in decisions at intake; ready tasks flow through implementation and review to merge.
-Humans only see needs-decision and failed (and approved tasks when merge is gated).
+Rules fill in decisions; ready tasks flow through implementation and review to merge.
+The client only sees the waiting states (waiting-intake / waiting-implement / waiting-review) and failed (to reopen).
 
   algr init                                         # write .algr/config.toml with fake adapters
   algr new "Add login" --question "auth: How do users sign in?"
-  algr list --state needs-decision
-  algr answer I1 I1-1="OAuth"
+  algr list --state waiting                         # every task waiting for an answer, whichever role asked
+  algr answer I1 I1-1="OAuth"                       # the role that asked runs again with the answer
   algr depends I2 --add I1 --remove I3              # change the tasks I2 waits for
   algr reopen I1 --note "fixed the runner"         # send a failed task back to intake
-  algr merge I1                                     # merge an approved task (flow.merge = "human")
+  algr cancel I1 --note "split into I4 and I5"      # stop a task; to change its purpose, cancel and new
   algr distill "Store dates in UTC" --topic time    # ask the distill agent to propose rules from a policy
   algr tick                                         # take in triggers, collect job results, start jobs
   algr run                                          # tick until no job is running
@@ -38,11 +38,14 @@ Humans only see needs-decision and failed (and approved tasks when merge is gate
   algr ui                                           # see the flow in a browser (http://127.0.0.1:8765)
 """
 
-# 人の操作がどちらの立場のものか。README の「人の役割」と algr ui のヘルプはここと突き合わせる（tests/test_help.py）。
+# list --state に渡すと、判断待ちの状態（waiting-*）をまとめて拾う
+WAITING = "waiting"
+
+# 操作がどちらの立場のものか。README の「立場」と algr ui のヘルプはここと突き合わせる（tests/test_help.py）。
 # ここに無いコマンドは、見るためのものと、フローを回すためのもの
 STANCES: dict[str, tuple[str, ...]] = {
-    "クライアント": ("new", "answer", "depends"),
-    "メタプログラマー": ("distill", "accept", "decline", "merge", "reopen"),
+    "クライアント": ("new", "answer", "depends", "reopen", "cancel"),
+    "メタプログラマー": ("distill", "accept", "decline"),
 }
 
 INIT_CONFIG = """\
@@ -51,8 +54,7 @@ INIT_CONFIG = """\
 
 [flow]
 max_parallel = 1  # 同時に in-progress にするタスクの数
-max_rework = 2    # レビューの修正依頼で実装に戻す回数の上限。超えたら failed
-merge = "auto"    # "human" にすると、レビューが通ったあと algr merge を待つ
+max_rework = 2    # レビューの修正依頼で実装に戻す回数の上限。超えたら failed（PJ の修正依頼は数えない）
 
 [adapters.task]
 use = "fake.tasks"
@@ -69,6 +71,9 @@ max_parallel = 2  # 起票・実装・レビュー・蒸留のジョブを同時
 [adapters.decisions]
 use = "fake.rules"
 dir = ".algr/decisions"
+
+[adapters.merge]
+use = "fake.merge"  # 頼まれたらすぐマージ済みにする。マージ先（main か統合ブランチか）はアダプタの設定で選ぶ
 
 [adapters.notify]
 use = "stub"
@@ -121,7 +126,7 @@ def _answer(value: str) -> tuple[str, str]:
 
 
 def commands() -> list[dict[str, str]]:
-    """サブコマンドと、その help と立場（人の操作でなければ空）。"""
+    """サブコマンドと、その help と立場（立場の操作でなければ空）。"""
     stance = {name: s for s, names in STANCES.items() for name in names}
     sub = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
     return [{"name": a.dest, "help": a.help or "", "stance": stance.get(a.dest, "")} for a in sub._choices_actions]
@@ -146,12 +151,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", choices=["human", "auto"], default="human")
 
     p = sub.add_parser("list", help="list tasks")
-    p.add_argument("--state", choices=[str(s) for s in State], default=None)
+    p.add_argument("--state", choices=[WAITING, *(str(s) for s in State)], default=None, help=f"{WAITING}: all waiting-* states")
 
     p = sub.add_parser("show", help="show a task")
     p.add_argument("task_id")
 
-    p = sub.add_parser("answer", help="answer open questions of a task")
+    p = sub.add_parser("answer", help="answer open questions of a waiting task")
     p.add_argument("task_id")
     p.add_argument("answers", nargs="+", type=_answer, metavar="QUESTION_ID=ANSWER")
 
@@ -164,8 +169,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("task_id")
     p.add_argument("--note", default="")
 
-    p = sub.add_parser("merge", help="merge an approved task waiting at the merge gate")
+    p = sub.add_parser("cancel", help="stop a task that is not done (to change its purpose, cancel it and create a new one)")
     p.add_argument("task_id")
+    p.add_argument("--note", default="")
 
     sub.add_parser("tick", help="take in triggers, collect job results and start jobs once")
     p = sub.add_parser("run", help="tick until no job is running")
@@ -213,6 +219,8 @@ def run(args: argparse.Namespace) -> Any:
             depends=args.depends,
         )
     if args.command == "list":
+        if args.state == WAITING:
+            return [t for t in engine.tasks.list() if t.state in flow.WAITING]
         return engine.tasks.list(State(args.state) if args.state else None)
     if args.command == "show":
         return engine.tasks.get(args.task_id)
@@ -222,8 +230,8 @@ def run(args: argparse.Namespace) -> Any:
         return engine.depend(args.task_id, add=args.add, remove=args.remove)
     if args.command == "reopen":
         return engine.reopen(args.task_id, args.note)
-    if args.command == "merge":
-        return engine.merge(args.task_id)
+    if args.command == "cancel":
+        return engine.cancel(args.task_id, args.note)
     if args.command == "tick":
         return {"events": [e.to_dict() for e in engine.tick()]}
     if args.command == "run":

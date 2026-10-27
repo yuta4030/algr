@@ -1,12 +1,13 @@
 # algr を algr で開発する
 
-algr 自身の開発を algr で回す。起票・実装・レビュー・蒸留はエージェントが行い、人は未決事項への回答、レビューの異議への回答、マージ、ルールの受け入れだけを行う。
+algr 自身の開発を algr で回す。起票・実装・レビュー・蒸留はエージェントが行う。クライアントは判断待ちへの回答、失敗したタスクのやり直し（`algr reopen`）、統合ブランチへのマージを、メタプログラマーはルールの受け入れを行う。
 
 ## 置いているもの
 
 | パス | 中身 | git |
 |---|---|---|
-| `.algr/config.toml` | 設定（実行は `fake.process` で `algr-agent`、判断ストアは k2down、マージは人） | 入れる |
+| `.algr/config.toml` | 設定（実行は `fake.process` で `algr-agent`、判断ストアは k2down、マージは `.algr/adapters/branch.py`） | 入れる |
+| `.algr/adapters/branch.py` | マージのアダプタ。`algr/<ID>` が統合ブランチに入ったら merged を返す（マージはクライアントが手で行う） | 入れる |
 | `.algr/prompts/` | 実装とレビューのプロンプトへの追記（ブランチ、テスト、リンタ） | 入れる |
 | `.algr/decisions/` | ルール（`rules.json`）、まだ決まっていない提案（`proposals.json`）、判断の記録（`usage.jsonl`） | 入れる |
 | `.algr/tasks/`、`.algr/state/` | タスク、イベントの記録、ジョブの出力 | 入れない |
@@ -30,9 +31,10 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 1. 統合ブランチ（PR で main に入れるブランチ）をチェックアウトする。エージェントはそこから `algr/<ID>` を切り、終わるとそこに戻る
 2. `algr watch --interval 3` を常駐させる
 3. `algr new "<題>" --purpose "<目的>" -q "<論点>: <問い>"` で起票する
-4. `decision.requested` / `review.escalated` が出たら `algr show <ID>` で問いを見て答える（`algr answer`）。推奨案はそのまま受けず、コードを読んで確かめる（下の「分かったこと」）
-5. `review.approved` が出たら、`git diff HEAD...algr/<ID>` と、`git worktree` に出したテストで確かめる
-6. マージするなら `git merge --ff-only algr/<ID>` と `algr merge <ID>`。統合ブランチを push して PR にする。PR の説明には、人の答えとエージェントの判断を載せる
+4. `intake.asked` / `implement.asked` / `review.asked` が出たら（まとめて拾うなら `algr list --state waiting`）、`algr show <ID>` で問いを見て答える（`algr answer`）。推奨案はそのまま受けず、コードを読んで確かめる（下の「分かったこと」）
+5. `review.approved` が出たらタスクは `merging` で待つ。`git diff HEAD...algr/<ID>` と、`git worktree` に出したテストで確かめる
+6. マージするなら `git merge --ff-only algr/<ID>`。次の tick でアダプタが見つけて done にする。`algr/<ID>` は done になってから消す（先に消すと closed として failed になる）。
+   統合ブランチを push して PR にする。PR の説明には、クライアントの答えとエージェントの判断を載せる。PR への指摘は新しいタスクとして起票する
 7. 蒸留の提案（`algr proposals`）を受け入れるなら `algr accept`。文が曖昧なら `k2down --dir .algr/decisions replace` で言い直す。ルールの変更も同じ PR に入れる
 
 エージェントが作業ツリーを書き換えている間は、人の側で作業ツリーを触らない（未コミットの変更はエージェントのもの）。

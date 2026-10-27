@@ -4,12 +4,14 @@
 コアは判断の中身を見ない。結果の形を確かめ、それに従って状態を動かして記録するだけ。
 
 役ごとの起動する時と結果（JSON）の形は ROLE_HELP。
-- intake：   fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項
-- implement：question_ids は判断が従った未決事項。未決事項の答えから外れるなら判断せず、差し戻す。
-             想定外の判断が出たら、勝手に決めずに returned で返す
-- review：   objections は判断への異議（人に回す）。changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）
-- distill：  source は元になった決断 ID（report の候補から出した提案には無い）。rules は足す提案、retire は外す提案。どちらも人が accept してはじめてルールに効く。
-             人の答えのほか、input.report（落とす候補・書き直す候補）からも外す提案と言い直し（新しいルールと外す提案の対）を出す
+- intake：   fills はルールで埋まった未決事項。questions は意図から新たに洗い出した未決事項（クライアントに聞く）
+- implement：question_ids は判断が従った未決事項。ルールで決まらない判断が出たら、勝手に決めずに questions で聞く。
+             聞いたら PR は出さず、答えがそろうと実装が走り直す
+- review：   objections は判断への異議、questions は判断に結び付かない問い（どちらもクライアントに聞く）。
+             changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）。聞いたら答えを持って走り直し、承認か修正依頼かを決める
+- distill：  source は元になった決断 ID（report の候補から出した提案には無い）。rules は足す提案、retire は外す提案。
+             どちらもメタプログラマーが accept してはじめてルールに効く。
+             クライアントの答えのほか、input.report（落とす候補・書き直す候補）からも外す提案と言い直し（新しいルールと外す提案の対）を出す
 
 intake と implement の結果には、見つけた別件を起票する "tasks": [{"title", "purpose"?, "questions"?, "depends"?, "priority"?}] を付けられる。
 depends には既にあるタスクの ID を書く。起票されたタスクは source: auto になる。
@@ -34,16 +36,17 @@ ROLE_HELP: dict[Role, dict[str, str]] = {
         "name": "実装",
         "when": "in-progress にいる間",
         "result": '`{"pr", "decisions": [{"text", "answer", "topic"?, "rule_ids"?, "question_ids"?}]}`、'
-        '差し戻すときは `{"returned": {"text", "topic"?, "recommended"?}}`',
+        '聞くときは `{"questions": [{"text", "topic"?, "options"?, "recommended"?}]}`',
     },
     Role.REVIEW: {
         "name": "レビュー",
         "when": "review にいる間",
-        "result": '`{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"]}`',
+        "result": '`{"approved": bool, "objections": {"<決断 ID>": "<理由>"}, "changes"?: ["<修正依頼>"], '
+        '"questions"?: [{"text", "topic"?, "options"?, "recommended"?}]}`',
     },
     Role.DISTILL: {
         "name": "蒸留",
-        "when": "done になったタスクに、人が答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ）",
+        "when": "done になったタスクに、クライアントが答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ）",
         "result": '`{"rules": [{"rule", "source"?}], "retire"?: [{"rule_id", "reason", "source"?}]}`',
     },
 }
@@ -71,7 +74,7 @@ class IntakeResult:
 class ImplementResult:
     pr: str | None = None
     decisions: list[dict[str, Any]] = field(default_factory=list)
-    returned: dict[str, Any] | None = None
+    questions: list[dict[str, Any]] = field(default_factory=list)  # クライアントに聞く問い。あれば PR は出さない
     tasks: list[dict[str, Any]] = field(default_factory=list)  # 見つけた別件
 
 
@@ -80,12 +83,13 @@ class ReviewResult:
     approved: bool
     objections: dict[str, str] = field(default_factory=dict)  # 決断 ID → 理由
     changes: list[str] = field(default_factory=list)  # 判断以外の修正依頼
+    questions: list[dict[str, Any]] = field(default_factory=list)  # 判断に結び付かない、クライアントに聞く問い
 
 
 @dataclass
 class DistillResult:
     rules: list[dict[str, str]] = field(default_factory=list)
-    retire: list[dict[str, str]] = field(default_factory=list)  # 外す提案。外すのは人の accept を通したときだけ
+    retire: list[dict[str, str]] = field(default_factory=list)  # 外す提案。外すのはメタプログラマーの accept を通したときだけ
 
 
 def job_input(
@@ -102,7 +106,7 @@ def job_input(
         data["previous"] = {"pr": task.pr, "decisions": [asdict(d) for d in task.decisions]}
         data["feedback"] = list(task.feedback)
     if role == Role.REVIEW:
-        # 人が答えた未決事項は人のゲートを通っているので、異議の対象にしない。判断がそれに従っているかは確かめる
+        # クライアントが答えた未決事項は立場が決めたことなので、異議の対象にしない。判断がそれに従っているかは確かめる
         data["settled"] = [q.id for q in task.questions if q.by == "human"]
     if role == Role.DISTILL:
         data["questions"] = [asdict(q) for q in task.questions if q.id in task.to_distill]
@@ -146,10 +150,8 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
         ]
         return IntakeResult(fills, _texts(data.get("questions", []), "text"), _tasks(data))
     if role == Role.IMPLEMENT:
-        if "returned" in data:
-            returned = _need(data, "returned", dict)
-            _texts([returned], "text")
-            return ImplementResult(returned=returned, tasks=_tasks(data))
+        if data.get("questions"):
+            return ImplementResult(questions=_texts(data["questions"], "text"), tasks=_tasks(data))
         decisions = _texts(data.get("decisions", []), "text", "answer")
         for d in decisions:
             for key in ("rule_ids", "question_ids"):
@@ -164,7 +166,8 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
         changes = data.get("changes", [])
         if not isinstance(changes, list) or not all(isinstance(c, str) for c in changes):
             raise ResultError("changes must be a list of strings")
-        return ReviewResult(bool(_need(data, "approved", bool)), {str(k): str(v) for k, v in objections.items()}, changes)
+        objections = {str(k): str(v) for k, v in objections.items()}
+        return ReviewResult(bool(_need(data, "approved", bool)), objections, changes, _texts(data.get("questions", []), "text"))
     if role == Role.DISTILL:
         # source は元になった決断 ID。report の候補から出した提案には無いので、空にする
         rules, retire = _texts(data.get("rules", []), "rule"), _texts(data.get("retire", []), "rule_id", "reason")

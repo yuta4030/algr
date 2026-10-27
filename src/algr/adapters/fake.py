@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from algr.adapters import Conflict, Context, Rule, RunState, RunStatus
+from algr.adapters import Conflict, Context, MergeState, MergeStatus, Rule, RunState, RunStatus
 from algr.model import Event, Job, State, Task
 
 
@@ -334,6 +334,27 @@ class RuleFile:
             "conflict_candidates": [],
             "declined_proposals": [u["content"] | {"proposal": u["proposal"]} for u in usage if u["event"] == "declined"],
         }
+
+
+class InstantMerge:
+    """マージのフェイク。頼まれたらすぐマージ先に入ったことにする。頼まれた PR は merges.json に残す。"""
+
+    def __init__(self, ctx: Context, file: str = ".algr/state/merges.json") -> None:
+        self.file = ctx.path(file)
+
+    def requests(self) -> dict[str, str]:
+        """タスク ID → 頼まれた PR。"""
+        return json.loads(self.file.read_text(encoding="utf-8")) if self.file.exists() else {}
+
+    def request(self, task: Task) -> None:
+        requests = self.requests()
+        if requests.get(task.id) != task.pr:  # 冪等：同じ PR は二重に頼まない
+            _write_json(self.file, {**requests, task.id: task.pr})
+
+    def status(self, task: Task) -> MergeStatus:
+        if self.requests().get(task.id) != task.pr:
+            return MergeStatus(MergeState.OPEN, message="not requested")
+        return MergeStatus(MergeState.MERGED)
 
 
 class StubNotifier:

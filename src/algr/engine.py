@@ -23,6 +23,8 @@ from algr.adapters import (
     Conflict,
     DecisionStore,
     ExecutorAdapter,
+    MergeAdapter,
+    MergeState,
     Notifier,
     RunState,
     RunStatus,
@@ -35,16 +37,17 @@ from algr.model import Event, Job, Question, Role, State, Task
 
 Hook = Callable[[Event, "Engine"], Any]
 
-# 状態ごとに、その状態を先へ進めるエージェントの役
-# トリガーが外から送れるイベント。人の操作（起票、回答、やり直し、マージ）と同じ入口を通る
-EXTERNAL_EVENTS = ("task.created", "decision.resolved", "task.reopened", "task.done")
+# トリガーが外から送れるイベント。立場の操作（起票、回答、やり直し、やめる）と同じ入口を通る。
+# 回答はどの役が聞いたかを知らなくてよいよう task.answered で受け、判断待ちの状態から <役>.answered を起こす
+EXTERNAL_EVENTS = ("task.created", "task.answered", "task.reopened", "task.canceled")
 
 # エージェントが起票する別件の未決事項から受け取る項目
 QUESTION_FIELDS = ("text", "topic", "options", "recommended")
 
-# 人の方針を蒸留に依頼するタスクで、方針（答え）を載せる未決事項の問い
+# 立場の方針を蒸留に依頼するタスクで、方針（答え）を載せる未決事項の問い
 POLICY_QUESTION = "人の方針（タスクの外で受けたもの）"
 
+# 状態ごとに、その状態を先へ進めるエージェントの役
 ROLE_FOR_STATE = {State.INTAKE: Role.INTAKE, State.IN_PROGRESS: Role.IMPLEMENT, State.REVIEW: Role.REVIEW}
 
 
@@ -69,11 +72,11 @@ class Engine:
         trigger: TriggerAdapter,
         executor: ExecutorAdapter,
         decisions: DecisionStore,
+        merger: MergeAdapter,
         notifier: Notifier,
         hooks: dict[str, list[Hook]] | None = None,
         max_parallel: int = 1,
         max_rework: int = 2,
-        merge_gate: bool = False,
         agents: dict[str, dict[str, Any]] | None = None,
         event_log: Path | None = None,
     ) -> None:
@@ -81,11 +84,11 @@ class Engine:
         self.trigger = trigger
         self.executor = executor
         self.decisions = decisions
+        self.merger = merger
         self.notifier = notifier
         self.hooks = hooks or {}
         self.max_parallel = max_parallel
         self.max_rework = max_rework
-        self.merge_gate = merge_gate
         self.agents = agents or {}
         self.event_log = event_log
         self.events: list[Event] = []
@@ -102,11 +105,11 @@ class Engine:
             trigger=config.adapter("trigger"),
             executor=config.adapter("executor"),
             decisions=config.adapter("decisions"),
+            merger=config.adapter("merge"),
             notifier=config.adapter("notify"),
             hooks=config.hooks(),
             max_parallel=config.max_parallel,
             max_rework=config.max_rework,
-            merge_gate=config.merge_gate,
             agents=config.agents(),
             event_log=config.ctx.path(".algr/state/events.jsonl"),
         )
@@ -144,7 +147,7 @@ class Engine:
             self._draining = False
 
     def _call_hook(self, hook: Hook, event: Event) -> None:
-        """hook は既定の処理のあとに呼ぶ。状態はもう動いているので、hook が落ちてもフローは止めずに人に知らせる。"""
+        """hook は既定の処理のあとに呼ぶ。状態はもう動いているので、hook が落ちてもフローは止めずに知らせる。"""
         try:
             hook(event, self)
         except Exception as e:  # noqa: BLE001 — 利用側のコードの失敗でループを止めない
@@ -159,7 +162,7 @@ class Engine:
             with self.event_log.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    # --- 人やトリガーからの入口 -------------------------------------------
+    # --- 立場やトリガーからの入口 -----------------------------------------
 
     def create(
         self,
@@ -171,7 +174,7 @@ class Engine:
         priority: int = 0,
         depends: list[str] | None = None,
     ) -> Task:
-        """意図を受け取り、タスクを起票に流す。questions は人が最初から分かっている未決事項。"""
+        """意図を受け取り、タスクを起票に流す。questions はクライアントが最初から分かっている未決事項。"""
         for dep in depends or []:
             self.tasks.get(dep)  # 無いタスクには依存できない
         task = Task(id="", title=title, purpose=purpose, source=source, priority=priority, depends=list(depends or []))
@@ -182,9 +185,12 @@ class Engine:
         return self.tasks.get(task.id)
 
     def resolve(self, task_id: str, answers: dict[str, str]) -> Task:
-        """人が未決事項に答える。答えると必ず起票に戻り、そこから主経路に合流する。"""
+        """クライアントが未決事項に答える。答えがそろうと聞いた役の状態に戻り、その役のジョブが要約から走り直す。
+
+        答えは一部ずつでもよい。残りがあるあいだは答えだけを保存し、判断待ちのまま待つ。
+        """
         task = self.tasks.get(task_id)
-        if task.state != State.NEEDS_DECISION:
+        if task.state not in flow.WAITING:
             raise flow.TransitionError(f"{task_id} is {task.state}, not waiting for a decision")
         for qid, answer in answers.items():
             q = task.question(qid)
@@ -193,13 +199,16 @@ class Engine:
             q.answer, q.by = answer, "human"
             self.decisions.decide(q.id, "none", answer)
             task.to_distill.append(q.id)
-        self.emit("decision.resolved", task, questions=list(answers))
+        if task.open_questions():
+            self.tasks.save(task)
+        else:
+            self.emit(flow.WAITING[task.state][1], task, questions=list(answers))
         return self.tasks.get(task_id)
 
     def request_distill(self, policy: str, *, topic: str = "") -> Task:
-        """人がタスクの外で言った方針を、蒸留エージェントに依頼する。
+        """メタプログラマーがタスクの外で受けた方針を、蒸留エージェントに依頼する。
 
-        依頼はタスクに乗せる（アダプタ IF を変えずにジョブを持てる）。方針は人が答えた未決事項として持ち、
+        依頼はタスクに乗せる（アダプタ IF を変えずにジョブを持てる）。方針は立場が答えた未決事項として持ち、
         蒸留のジョブだけが出るよう、最初から done にしておく。起票・実装・レビューには流れず、イベントも出さない。
         """
         title = f"方針：{' '.join(policy.split())[:40]}"
@@ -212,7 +221,7 @@ class Engine:
         return self.tasks.get(task.id)
 
     def reopen(self, task_id: str, note: str = "") -> Task:
-        """人が failed のタスクを起票に戻す。修正依頼の回数は数え直す。"""
+        """クライアントが failed のタスクを起票に戻す。依頼を通せなかったので、やり直すかは依頼した側が決める。修正依頼の回数は数え直す。"""
         task = self.tasks.get(task_id)
         if task.state != State.FAILED:
             raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
@@ -220,16 +229,16 @@ class Engine:
         self.emit("task.reopened", task, note=note)
         return self.tasks.get(task_id)
 
-    def merge(self, task_id: str) -> Task:
-        """マージのゲートで、人が承認済みのタスクをマージする（マージされたと記録する）。"""
+    def cancel(self, task_id: str, note: str = "") -> Task:
+        """クライアントがタスクをやめる。目的を変えるときも、やめて new し直す。マージ先に入った（done）ものはやめられない。"""
         task = self.tasks.get(task_id)
-        if task.state != State.APPROVED:
-            raise flow.TransitionError(f"{task_id} is not approved and waiting for merge")
-        self.emit("task.done", task, pr=task.pr, merged_by="human")
+        if task.state in (State.DONE, State.CANCELED):
+            raise flow.TransitionError(f"{task_id} is {task.state} and cannot be canceled")
+        self.emit("task.canceled", task, note=note)
         return self.tasks.get(task_id)
 
     def depend(self, task_id: str, *, add: list[str] | None = None, remove: list[str] | None = None) -> Task:
-        """人が依存先を足す・外す。依存先は実在し、依存をたどって自分に戻らないこと。配車は次の tick から新しい依存で判定する。"""
+        """クライアントが依存先を足す・外す。依存先は実在し、依存をたどって自分に戻らないこと。配車は次の tick から新しい依存で判定する。"""
         task = self.tasks.get(task_id)
         for dep in add or []:
             self.tasks.get(dep)  # 無いタスクには依存できない
@@ -257,11 +266,14 @@ class Engine:
         return []
 
     def tick(self) -> list[Event]:
-        """1 周分：トリガーのイベントを取り込み、ジョブの結果を受け取り、ready を配車し、要るジョブを起動する。"""
+        """1 周分：トリガーのイベントを取り込み、ジョブの結果を受け取り、マージを見て、ready を配車し、要るジョブを起動する。"""
         start = len(self.events)
         for event in self.trigger.poll():
             self.handle_external(event)
         self.poll()
+        for task in self.tasks.list(State.MERGING):
+            with _retry_next_tick():
+                self._merge(task)
         self.dispatch()
         for task in self.tasks.list():
             with _retry_next_tick():
@@ -288,7 +300,7 @@ class Engine:
         """常駐して tick を回し続ける。トリガーの取り込みと ready の配車が止まらないようにする。
 
         until が真を返すか、SIGINT（Ctrl-C）か SIGTERM（Windows は SIGBREAK も）を受けると、いまの tick を終えてから止まる。
-        保存がぶつかっても次の tick でやり直すので、algr answer などの人の操作と同時に動かしてよい。
+        保存がぶつかっても次の tick でやり直すので、algr answer などの立場の操作と同時に動かしてよい。
         """
         stopping: list[int] = []
         previous = {}
@@ -310,12 +322,12 @@ class Engine:
     def handle_external(self, event: Event) -> None:
         if event.name == "task.created":
             self.create(**event.data)
-        elif event.name == "decision.resolved":
+        elif event.name == "task.answered":
             self.resolve(event.task_id, event.data["answers"])
         elif event.name == "task.reopened":
             self.reopen(event.task_id, event.data.get("note", ""))
-        elif event.name == "task.done":
-            self.merge(event.task_id)
+        elif event.name == "task.canceled":
+            self.cancel(event.task_id, event.data.get("note", ""))
         else:
             raise flow.TransitionError(f"triggers may only send {', '.join(EXTERNAL_EVENTS)}, got {event.name}")
 
@@ -332,6 +344,25 @@ class Engine:
                 self.emit("task.started", task)
                 started.append(task)
         return started
+
+    # --- マージ ------------------------------------------------------------
+
+    def _merge(self, task: Task) -> None:
+        """merging のタスクのマージを頼み（冪等）、マージ先に入ったかを見る。アダプタが失敗したら次の tick でやり直す。"""
+        try:
+            self.merger.request(task)
+            status = self.merger.status(task)
+        except AdapterError as e:
+            self._log({"merge_error": str(e), "task_id": task.id, "ts": _now()})
+            return
+        if status.state == MergeState.MERGED:
+            self.emit("task.done", task, pr=task.pr)
+        elif status.state == MergeState.CHANGES:
+            # PJ の修正依頼は、algr のレビューが見逃したものとして実装に戻す。max_rework には数えない（立場の外の手続きなので）
+            task.feedback = list(status.changes)
+            self.emit("merge.changes_requested", task, changes=list(status.changes))
+        elif status.state == MergeState.CLOSED:
+            self._fail(task, "merge", status.message or "closed without merging")
 
     # --- ジョブ ------------------------------------------------------------
 
@@ -366,7 +397,7 @@ class Engine:
             job.input = job_input(role, task, self.decisions.rules(), self.agents.get(str(role)), report)
             record: dict[str, Any] = {"job_started": job.id, "task_id": task.id, "role": str(role)}
             if role == Role.DISTILL:
-                # 蒸留が何を読んだか（人の答えと report の候補の数）を残し、画面で見えるようにする
+                # 蒸留が何を読んだか（クライアントの答えと report の候補の数）を残し、画面で見えるようにする
                 record["questions"] = task.to_distill
                 record["report"] = {k: len(v) for k, v in (report or {}).items() if k != "rules" and isinstance(v, list)}
                 task.to_distill = []
@@ -444,8 +475,8 @@ class Engine:
         else:
             self._fail(task, role, message)
 
-    def _fail(self, task: Task, role: Role, message: str) -> None:
-        """タスクを failed にする。理由はタスクに持ち、algr show と reopen までの表示はそこから読む。"""
+    def _fail(self, task: Task, role: str, message: str) -> None:
+        """タスクを failed にする。role は失敗した役（マージなら "merge"）。理由はタスクに持ち、algr show と reopen までの表示はそこから読む。"""
         task.failure = {"role": str(role), "message": message}
         self.emit("task.failed", task, role=str(role), message=message)
 
@@ -466,7 +497,7 @@ class Engine:
         return []
 
     def _ask(self, task: Task, questions: list[Question]) -> list[str]:
-        """未決事項を人に上げたと記録する。同じ問いは二度上げない。"""
+        """未決事項をクライアントに聞いたと記録する。同じ問いは二度聞かない。"""
         asked = []
         for q in questions:
             if not q.asked:
@@ -475,30 +506,32 @@ class Engine:
                 asked.append(q.id)
         return asked
 
+    def _add_questions(self, task: Task, questions: list[dict[str, Any]]) -> list[Question]:
+        return [
+            task.add_question(q["text"], q.get("topic", ""), options=q.get("options", []), recommended=q.get("recommended"))
+            for q in questions
+        ]
+
     def _intake_done(self, task: Task, result: IntakeResult) -> None:
-        """ルールで埋まった点を記録し、未決がゼロなら ready、残れば needs-decision にする。"""
+        """ルールで埋まった点を記録し、未決がゼロなら ready、残れば waiting-intake にしてクライアントに聞く。"""
         for fill in result.fills:
             q = task.question(fill.question_id)
             if not q.open:
                 continue
             q.answer, q.by, q.rule_ids = fill.answer, "rule", fill.rule_ids
             self.decisions.apply(q.id, q.text, q.rule_ids)
-        for new in result.questions:
-            task.add_question(
-                new["text"], new.get("topic", ""), options=new.get("options", []), recommended=new.get("recommended")
-            )
+        self._add_questions(task, result.questions)
         if task.open_questions():
             asked = self._ask(task, task.open_questions())
-            self.emit("decision.requested", task, channel=str(task.channel), questions=asked)
+            self.emit("intake.asked", task, channel=str(task.channel), questions=asked)
         else:
             self.emit("task.ready", task)
 
     def _implement_done(self, task: Task, result: ImplementResult) -> None:
-        if result.returned is not None:
-            # 想定外の判断が出たら勝手に決めず、起票に差し戻す。起票エージェントがルールを当て、埋まらなければ人に聞く
-            r = result.returned
-            q = task.add_question(r["text"], r.get("topic", ""), recommended=r.get("recommended"))
-            self.emit("task.returned", task, questions=[q.id])
+        if result.questions:
+            # ルールで決まらない判断が出たら勝手に決めず、クライアントに聞く。答えがそろうと実装が走り直す（起票には戻さない）
+            asked = self._ask(task, self._add_questions(task, result.questions))
+            self.emit("implement.asked", task, channel=str(task.channel), questions=asked)
             return
         known = {q.id for q in task.questions}
         cited = {qid for d in result.decisions for qid in d.get("question_ids", [])}
@@ -521,25 +554,19 @@ class Engine:
         if unknown := sorted(set(result.objections) - known):
             self._fail(task, Role.REVIEW, f"objections to unknown decisions: {' '.join(unknown)}")
             return
-        # 人が答えた未決事項は人のゲートを通っているので、異議があっても蒸し返さない
+        # クライアントが答えた未決事項は立場が決めたことなので、異議があっても蒸し返さない
         settled = {q.id for q in task.questions if q.by == "human"}
         objections = {did: why for did, why in result.objections.items() if did not in settled}
-        if result.approved:
-            self._approved(task)
-        elif objections:
-            self._escalate(task, objections)
+        if objections or result.questions:
+            self._review_asks(task, objections, result.questions)  # 答えを持って走り直したレビューが、承認か修正依頼かを決める
+        elif result.approved:
+            self.emit("review.approved", task, pr=task.pr)
         elif result.changes:
             self._request_changes(task, result.changes)
         elif result.objections:
-            self._approved(task)  # 異議がすべて人の決めたことへのものだった
+            self.emit("review.approved", task, pr=task.pr)  # 異議がすべてクライアントの決めたことへのものだった
         else:
             self._fail(task, Role.REVIEW, "review rejected without objections")
-
-    def _approved(self, task: Task) -> None:
-        if not self.merge_gate:
-            self.emit("task.done", task, pr=task.pr, merged_by="auto")
-            return
-        self.emit("review.approved", task, pr=task.pr)
 
     def _request_changes(self, task: Task, changes: list[str]) -> None:
         if task.reworks >= self.max_rework:
@@ -550,10 +577,10 @@ class Engine:
         task.feedback = list(changes)
         self.emit("review.changes_requested", task, changes=list(changes))
 
-    def _escalate(self, task: Task, objections: dict[str, str]) -> None:
+    def _review_asks(self, task: Task, objections: dict[str, str], questions: list[dict[str, Any]]) -> None:
         reopened = []
         for did in objections:
-            # 異議のある判断は未決事項として起票に差し戻す。ルールに従った判断なら、ルールの書き直し候補にする
+            # 異議のある判断は未決事項にしてクライアントに聞く。ルールに従った判断なら、ルールの書き直し候補にする
             if any(q.id == did for q in task.questions):
                 q = task.question(did)
                 if q.by == "rule":
@@ -564,21 +591,27 @@ class Engine:
                 if d.rule_ids:
                     self.decisions.reject(d.id, d.text, d.rule_ids)
                 q = task.add_question(d.text, d.topic, recommended=d.answer)
+                # 実装は走り直さないので、判断はこの問いの答えに従うものにする。答えから外れていれば、走り直したレビューが修正を頼む
+                d.rule_ids, d.question_ids = [], [q.id]
             self._ask(task, [q])
             reopened.append(q.id)
-        self.emit("review.escalated", task, questions=reopened, reasons=objections)
+        reopened += self._ask(task, self._add_questions(task, questions))
+        self.emit("review.asked", task, channel=str(task.channel), questions=reopened, reasons=objections)
 
     # --- 既定の処理（イベントごと） -----------------------------------------
 
     def _on_task_created(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # 起票エージェント
 
-    def _on_decision_requested(self, task: Task, event: Event) -> None:
-        # 人に聞くときは必ず知らせる。inline と queue の違いは聞き方（対話か、キューか）だけ
+    def _notify_asked(self, task: Task, event: Event) -> None:
+        # クライアントに聞くときは必ず知らせる。inline と queue の違いは聞き方（対話か、キューか）だけ
         if event.data["questions"]:
-            self.notifier.notify(task, f"{task.id} needs a decision: {' '.join(event.data['questions'])}")
+            role = ROLE_FOR_STATE[State(event.data["from"])]
+            self.notifier.notify(task, f"{task.id} needs a decision from {role}: {' '.join(event.data['questions'])}")
 
-    def _on_decision_resolved(self, task: Task, event: Event) -> None:
+    _on_intake_asked = _on_implement_asked = _on_review_asked = _notify_asked
+
+    def _on_intake_answered(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # 起票のやり直し
 
     def _on_task_ready(self, task: Task, event: Event) -> None:
@@ -587,11 +620,14 @@ class Engine:
     def _on_task_started(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # 実装エージェント
 
-    def _on_task_returned(self, task: Task, event: Event) -> None:
-        self._start_jobs(task)  # 起票エージェントがルールを当て直す
+    def _on_implement_answered(self, task: Task, event: Event) -> None:
+        self._start_jobs(task)  # 実装エージェントが答えを持って走り直す
 
     def _on_review_changes_requested(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # 実装エージェントが指摘の分だけ直す
+
+    def _on_merge_changes_requested(self, task: Task, event: Event) -> None:
+        self._start_jobs(task)  # 実装エージェントが PJ の指摘の分だけ直す
 
     def _on_task_reopened(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # 起票からやり直す
@@ -599,22 +635,34 @@ class Engine:
     def _on_task_submitted(self, task: Task, event: Event) -> None:
         self._start_jobs(task)  # レビューエージェント
 
-    def _on_review_approved(self, task: Task, event: Event) -> None:
-        self.notifier.notify(task, f"{task.id} is approved and waiting for merge: {task.pr}")
+    def _on_review_answered(self, task: Task, event: Event) -> None:
+        self._start_jobs(task)  # レビューエージェントが答えを持って走り直す
 
-    def _on_review_escalated(self, task: Task, event: Event) -> None:
-        self.notifier.notify(task, f"{task.id} was escalated in review: {' '.join(event.data['questions'])}")
+    def _on_review_approved(self, task: Task, event: Event) -> None:
+        self._merge(task)  # マージを頼む。入ったかどうかは tick でも見る
 
     def _on_task_done(self, task: Task, event: Event) -> None:
-        # マージされたので、ルールに従った判断を hit として記録する。未決事項に従った判断は未決事項の側で記録される
+        # マージ先に入ったので、ルールに従った判断を hit として記録する。未決事項に従った判断は未決事項の側で記録される
         for item in [*task.questions, *task.decisions]:
             if item.rule_ids:
                 self.decisions.decide(item.id, "hit", item.answer or "", predicted=item.answer)
         self.tasks.comment(task.id, f"merged: {task.pr}")
-        self._start_jobs(task)  # 蒸留エージェント（人が答えた未決事項があれば）
+        self._start_jobs(task)  # 蒸留エージェント（クライアントが答えた未決事項があれば）
+
+    def _blocks(self, task: Task) -> str:
+        waiting = [t.id for t in self.tasks.list() if task.id in t.depends and t.state not in (State.DONE, State.CANCELED)]
+        return f" (blocks {' '.join(waiting)})" if waiting else ""
 
     def _on_task_failed(self, task: Task, event: Event) -> None:
-        # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて人に上げる
-        waiting = [t.id for t in self.tasks.list() if task.id in t.depends and t.state != State.DONE]
-        blocks = f" (blocks {' '.join(waiting)})" if waiting else ""
-        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}{blocks}")
+        # 依存しているタスクは待ち続ける。直すのは失敗したタスクの方なので、待っているタスクを添えて知らせる
+        self.notifier.notify(task, f"{task.id} failed: {event.data.get('message', '')}{self._blocks(task)}")
+
+    def _on_task_canceled(self, task: Task, event: Event) -> None:
+        # 走っているジョブは止める（stop は任意）。結果が届いても、状態に合わないので捨てられる。
+        # マージを頼んだ PR は閉じない（マージのアダプタに取り消しの口は無い）。依存しているタスクは待ち続けるので、外すか一緒にやめるかを決めてもらう
+        stop = getattr(self.executor, "stop", None)
+        for job_id in task.jobs.values() if stop else ():
+            stop(job_id)
+        blocks = self._blocks(task)
+        if blocks:
+            self.notifier.notify(task, f"{task.id} was canceled{blocks}")
