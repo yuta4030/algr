@@ -101,7 +101,7 @@ def test_loop_with_k2down(repo, home):
     write_config(repo, f'[adapters.decisions]\nuse = "k2down"\ncommand = {json.dumps(FAKE)}\n')
     engine = Engine.from_config(Config.load(repo))
     engine.create("Add login", questions=[{"text": "How?", "topic": "auth"}])
-    run_until(engine, lambda: state(engine, "I1") == State.NEEDS_DECISION)
+    run_until(engine, lambda: state(engine, "I1") == State.WAITING_INTAKE)
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
     assert engine.decisions.accept("P-001") == "R001"

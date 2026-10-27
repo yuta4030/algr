@@ -1,4 +1,4 @@
-"""アダプタの IF。コアは外部（タスク管理、実行場所、判断の保存、通知、トリガー）をこれ越しにしか触らない。
+"""アダプタの IF。コアは外部（タスク管理、実行場所、判断の保存、マージ、通知、トリガー）をこれ越しにしか触らない。
 
 アダプタは冪等に作る。イベントを再送しても壊れないようにするためだ。
 各チームは .algr/ に数十行のアダプタを書き、.algr/config.toml の `use` で指す。
@@ -67,7 +67,7 @@ class TriggerAdapter(Protocol):
 
 class RunState(StrEnum):
     RUNNING = "running"
-    BLOCKED = "blocked"  # エージェントが人を待っている。attach を持つアダプタなら人が入って答えられる
+    BLOCKED = "blocked"  # エージェントが立場を待っている。attach を持つアダプタなら入って答えられる
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -137,11 +137,11 @@ class DecisionStore(Protocol):
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None: ...
 
     def propose(self, rule: str, source: str) -> str:
-        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。マージ（人の確認）をもってルールになる。同じ提案は二重に出さない。"""
+        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。メタプログラマーの accept をもってルールになる。同じ提案は二重に出さない。"""
         ...
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
-        """ルールを外す提案をし、提案の ID を返す。外すのは人の accept を通したときだけ。同じルールの提案は二重に出さない。"""
+        """ルールを外す提案をし、提案の ID を返す。外すのはメタプログラマーの accept を通したときだけ。同じルールの提案は二重に出さない。"""
         ...
 
     def proposals(self) -> list[dict[str, str]]:
@@ -153,17 +153,51 @@ class DecisionStore(Protocol):
         ...
 
     def accept(self, proposal_id: str) -> str:
-        """人が提案を受け入れ、足す提案ならルールにし、外す提案ならルールを外す。足した（外した）ルールの ID を返す。"""
+        """メタプログラマーが提案を受け入れ、足す提案ならルールにし、外す提案ならルールを外す。足した（外した）ルールの ID を返す。"""
         ...
 
     def reject_proposal(self, proposal_id: str) -> None:
-        """人が提案を却下する。"""
+        """メタプログラマーが提案を却下する。"""
+        ...
+
+
+class MergeState(StrEnum):
+    MERGED = "merged"  # マージ先に入った
+    OPEN = "open"  # まだ入っていない。待つ
+    CHANGES = "changes"  # PJ（PR をレビュー・マージするチーム）から修正依頼が来た
+    CLOSED = "closed"  # マージされずに閉じられた
+
+
+@dataclass
+class MergeStatus:
+    state: MergeState
+    changes: list[str] = field(default_factory=list)  # CHANGES のときの PJ の指摘。実装の feedback に渡す
+    message: str = ""
+
+
+@runtime_checkable
+class MergeAdapter(Protocol):
+    """承認されたタスクの PR をマージ先に入れる。マージ先（main か統合ブランチか）はアダプタの設定で決まり、コアは同じ。
+
+    タスク管理（TaskAdapter）とは別の種類にする。コードの置き場（git、PR）はタスク管理と別のシステムになりうる。
+    同じシステムなら、1 つのクラスで両方の IF を実装して設定の 2 か所から指せばよい。
+    """
+
+    def request(self, task: Task) -> None:
+        """task.pr のマージを頼む。同じタスクの同じ PR で二度呼ばれても二重に頼まない。
+
+        コアは merging にいる間、tick ごとに呼ぶ。修正依頼のあとに出し直した PR は新しい頼みになる。
+        """
+        ...
+
+    def status(self, task: Task) -> MergeStatus:
+        """マージ先に入ったか。CHANGES は、いまの PR を頼んだあとに来た指摘だけを返す（直した PR に古い指摘を返さない）。"""
         ...
 
 
 @runtime_checkable
 class Notifier(Protocol):
-    """人の判断待ちを届ける。"""
+    """立場（クライアントとメタプログラマー）への知らせを届ける。判断待ちと失敗は必ず知らせる。"""
 
     def notify(self, task: Task, message: str) -> None: ...
 
@@ -173,5 +207,6 @@ KINDS: dict[str, type] = {
     "trigger": TriggerAdapter,
     "executor": ExecutorAdapter,
     "decisions": DecisionStore,
+    "merge": MergeAdapter,
     "notify": Notifier,
 }

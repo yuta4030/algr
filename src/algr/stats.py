@@ -1,7 +1,7 @@
 """指標の集計。.algr/state/events.jsonl だけから数え、外には何も聞かない。
 
-差し戻し率と STP 率はどちらも常に出す。差し戻し率は、根拠の薄い自己判断でも、何でも人に聞くようにしても下がるので、
-人の介入回数と必ず並べて見る。実装中とレビューでの差し戻しは原因が違うので分けて数える。
+差し戻し率と STP 率はどちらも常に出す。差し戻し率は、根拠の薄い自己判断でも、何でもクライアントに聞くようにしても下がるので、
+立場の介入回数と必ず並べて見る。実装中とレビューで聞いた回数は原因が違うので分けて数える。
 """
 
 from __future__ import annotations
@@ -12,10 +12,11 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-# 人が手を入れたことを表すイベント。task.done は人がマージしたときだけ数える
-HUMAN_EVENTS = ("decision.resolved", "task.reopened")
-# needs-decision に入るイベント
-ASKED_EVENTS = ("decision.requested", "review.escalated")
+# 立場が手を入れたことを表すイベント
+HUMAN_EVENTS = ("intake.answered", "implement.answered", "review.answered", "task.reopened")
+# 判断待ち（waiting-*）に入るイベント
+ASKED_EVENTS = ("intake.asked", "implement.asked", "review.asked")
+ANSWERED_EVENTS = HUMAN_EVENTS[:3]
 
 
 def load(path: Path) -> list[dict[str, Any]]:
@@ -30,8 +31,6 @@ def _rate(part: int, whole: int) -> float | None:
 
 
 def _is_human(event: dict[str, Any]) -> bool:
-    if event["name"] == "task.done":
-        return event["data"].get("merged_by") == "human"
     return event["name"] in HUMAN_EVENTS
 
 
@@ -56,7 +55,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         for e in evs:
             if e["name"] in ASKED_EVENTS and e["data"].get("questions"):
                 asked_at = asked_at or datetime.fromisoformat(e["ts"])
-            elif e["name"] == "decision.resolved" and asked_at is not None:
+            elif e["name"] in ANSWERED_EVENTS and asked_at is not None:
                 waits.append((datetime.fromisoformat(e["ts"]) - asked_at).total_seconds())
                 asked_at = None
 
@@ -69,8 +68,8 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "tasks": created,
         "done": len(done),
         "failed": tasks_with("task.failed"),
-        "return_rate_implement": _rate(tasks_with("task.returned"), tasks_with("task.started")),
-        "return_rate_review": _rate(tasks_with("review.escalated"), tasks_with("task.submitted")),
+        "return_rate_implement": _rate(tasks_with("implement.asked"), tasks_with("task.started")),
+        "return_rate_review": _rate(tasks_with("review.asked"), tasks_with("task.submitted")),
         "rework_rate": _rate(tasks_with("review.changes_requested"), tasks_with("task.submitted")),
         "stp_rate": _rate(len(touchless), len(done)),
         "interventions_per_task": _rate(interventions, created),

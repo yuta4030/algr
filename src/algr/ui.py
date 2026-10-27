@@ -26,10 +26,10 @@ from algr.model import Role, State, Task
 PAGE = Path(__file__).with_name("ui.html")
 PROMPTS = Path(__file__).with_name("prompts")
 
-# 主経路。needs-decision と failed は、主経路のどこで止まっているかで見せる
-STAGES = (State.INTAKE, State.READY, State.IN_PROGRESS, State.REVIEW, State.DONE)
-# 寄り道の状態を、主経路のどの段に置くか
-DETOUR = {State.NEEDS_DECISION: State.INTAKE, State.APPROVED: State.REVIEW}
+# 主経路。判断待ち（waiting-*）と failed は、主経路のどこで止まっているかで見せる
+STAGES = (State.INTAKE, State.READY, State.IN_PROGRESS, State.REVIEW, State.MERGING, State.DONE)
+# 寄り道の状態を、主経路のどの段に置くか。判断待ちは聞いた役の段
+DETOUR = {waiting: role_state for waiting, (role_state, _) in flow.WAITING.items()}
 
 
 def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]) -> dict[str, Any]:
@@ -41,10 +41,12 @@ def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]
         last = next((e for e in reversed(events) if e["name"] == "task.failed"), None)
         stage = State(last["data"]["from"]) if last else State.INTAKE
     blocked_by = [d for d in task.depends if states.get(d) != State.DONE] if task.state == State.READY else []
-    if task.state in (State.NEEDS_DECISION, State.FAILED) or task.state == State.APPROVED:
+    if task.state in flow.WAITING or task.state == State.FAILED:
         waiting = "human"
     elif task.state == State.DONE:
         waiting = "none"
+    elif task.state == State.MERGING:
+        waiting = "merge"
     elif blocked_by:
         waiting = "deps"
     elif task.jobs and set(task.jobs) != {"distill"}:
@@ -59,21 +61,19 @@ def _progress(task: Task, events: list[dict[str, Any]], states: dict[str, State]
         "failure": failure,
         "created": events[0]["ts"] if events else None,
         "since": events[-1]["ts"] if events else None,
-        "returned": names.count("task.returned"),
-        "changes": names.count("review.changes_requested"),
-        "asked": names.count("decision.requested") + names.count("review.escalated"),
+        "returned": names.count("implement.asked"),
+        "changes": names.count("review.changes_requested") + names.count("merge.changes_requested"),
+        "asked": sum(names.count(n) for n in stats.ASKED_EVENTS),
     }
 
 
 def _actions(task: Task) -> list[dict[str, str]]:
-    """人ができる操作。GUI ではまだ押せないので、同じことをする CLI を添える。"""
-    if task.state == State.NEEDS_DECISION:
+    """立場ができる操作。GUI ではまだ押せないので、同じことをする CLI を添える。"""
+    if task.state in flow.WAITING:
         answers = " ".join(f'{q.id}="{q.recommended or "..."}"' for q in task.open_questions())
         return [{"name": "answer", "cli": f"algr answer {task.id} {answers}"}]
     if task.state == State.FAILED:
         return [{"name": "reopen", "cli": f'algr reopen {task.id} --note "..."'}]
-    if task.state == State.APPROVED:
-        return [{"name": "merge", "cli": f"algr merge {task.id}"}]
     return []
 
 
@@ -132,7 +132,7 @@ def snapshot(engine: Engine) -> dict[str, Any]:
             "stages": [str(s) for s in STAGES],
             "states": [str(s) for s in State],
             "events": list(flow.EVENTS),
-            "merge_gate": engine.merge_gate,
+            "waiting": [str(s) for s in flow.WAITING],
         },
         "tasks": [
             {

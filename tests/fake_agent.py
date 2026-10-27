@@ -3,7 +3,7 @@
 実装の役だけ、タスクの題名で振る舞いを変える。ほかの役は algr.fake_agent に任せる。
 - "fail" を含む：何もせず終了コード 1
 - "badresult" を含む：約束の形になっていない結果を返す
-- "needs-db" を含み、db の判断がまだ無い：起票に差し戻す
+- "needs-db" を含み、db の判断がまだ無い：クライアントに聞く
 - "guess" を含み、naming の判断がまだ無い：ルール無しで判断して PR を出す
 - "cite" を含む：R001 に従った判断を載せて PR を出す
 - "follow" を含む：答えのある未決事項すべてに従った判断を載せて PR を出す。"follow-bad" は無い未決事項に従わせる
@@ -17,6 +17,7 @@
 - "fixme" を含む：PR が "-fixed" で終わるまで修正を依頼する
 - "nitpick" を含む：いつも修正を依頼する
 - "contrarian" を含む：すべての未決事項に異議を出す
+- "ask-merge" を含む：merge の未決事項に答えが無ければ、マージしてよいかを聞く。答えがあれば通す
 """
 
 import json
@@ -46,6 +47,8 @@ elif job["role"] == "review" and "nitpick" in title:
     write({"approved": False, "changes": ["rename this"]})
 elif job["role"] == "review" and "contrarian" in title:
     write({"approved": False, "objections": {q["id"]: "disagree" for q in task["questions"]}})
+elif job["role"] == "review" and "ask-merge" in title and "merge" not in decided:
+    write({"approved": False, "questions": [{"text": "Merge it?", "topic": "merge", "recommended": "yes"}]})
 elif job["role"] != "implement":
     write(fake_agent.run(job))
 elif "flaky" in title and not Path("flaky-ok").exists():
@@ -62,7 +65,7 @@ elif "fail" in title:
 elif "badresult" in title:
     write({"decisions": "nope"})
 elif "needs-db" in title and "db" not in decided:
-    write({"returned": {"text": "Which database?", "topic": "db", "recommended": "sqlite"}})
+    write({"questions": [{"text": "Which database?", "topic": "db", "recommended": "sqlite"}]})
 elif "guess" in title and "naming" not in decided:
     write({"pr": f"pr/{task['id']}", "decisions": [{"text": "Module name", "topic": "naming", "answer": "util"}]})
 elif "follow" in title:

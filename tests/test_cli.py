@@ -29,9 +29,14 @@ def test_new_answer_and_list(algr):
     assert [(q["topic"], q["text"]) for q in task["questions"]] == [("auth", "How do users sign in?"), ("", "plain question")]
 
     _, data, _ = algr("run", "--interval", "0.02", "--timeout", "10")
-    assert [e["name"] for e in data["events"]] == ["decision.requested"]
+    assert [e["name"] for e in data["events"]] == ["intake.asked"]
+    _, tasks, _ = algr("list", "--state", "waiting")
+    assert [(t["id"], t["state"]) for t in tasks] == [("I1", "waiting-intake")]
 
-    _, task, _ = algr("answer", "I1", "I1-1=OAuth", "I1-2=yes")
+    # 答えは一部ずつでもよい。そろうまでは判断待ちのまま
+    _, task, _ = algr("answer", "I1", "I1-1=OAuth")
+    assert task["state"] == "waiting-intake"
+    _, task, _ = algr("answer", "I1", "I1-2=yes")
     assert task["state"] == "intake"
     algr("run", "--interval", "0.02", "--timeout", "10")
 
@@ -43,7 +48,7 @@ def test_text_output(repo, capsys):
     main(["-C", str(repo), "new", "Add login", "-q", "auth: How?"])
     assert capsys.readouterr().out == "I1 [intake] Add login\n  ? I1-1 How?\n"
     main(["-C", str(repo), "run", "--interval", "0.02"])
-    assert capsys.readouterr().out == "I1 decision.requested\n"
+    assert capsys.readouterr().out == "I1 intake.asked\n"
 
 
 def test_unencodable_output(repo, monkeypatch):
@@ -70,10 +75,15 @@ def test_config_shows_sources(algr, repo):
     assert data["config"]["flow"]["max_parallel"] == 2
 
 
-def test_reopen_and_merge(algr):
+def test_reopen_needs_a_failed_task(algr):
     algr("new", "t")
     assert algr("reopen", "I1")[2] == {"error": "I1 is intake, not failed"}
-    assert algr("merge", "I1")[2] == {"error": "I1 is not approved and waiting for merge"}
+
+
+def test_merge_is_not_a_command(repo, capsys):
+    with pytest.raises(SystemExit):
+        main(["-C", str(repo), "merge", "I1"])
+    assert "invalid choice: 'merge'" in capsys.readouterr().err
 
 
 def test_depends(algr):

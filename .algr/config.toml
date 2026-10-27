@@ -4,7 +4,9 @@
 [flow]
 max_parallel = 1
 max_rework = 2
-merge = "human"         # レビューが通ったら止まり、人がマージする
+
+[adapters.merge]
+use = ".algr/adapters/branch.py:MergedInto"  # レビューが通ったら merging で止まり、クライアントが統合ブランチに入れるのを待つ
 
 [adapters.executor]
 use = "fake.process"

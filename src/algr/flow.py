@@ -1,7 +1,8 @@
 """状態遷移とイベント、遷移ごとの不変条件。
 
-タスクは 8 つの状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
-人が関わるのは needs-decision と failed、それにマージのゲートを置いたときの approved だけ。
+タスクは 10 の状態を移り、遷移ごとにイベントが 1 つ出る。そのイベントがそのまま hook の差し込み口になる。
+立場（クライアント）に渡るのは、起票・実装・レビューそれぞれの判断待ち（waiting-*）と failed だけ。
+答えが出ると、聞いた役の状態に戻ってその役が走り直す。
 """
 
 from __future__ import annotations
@@ -15,66 +16,87 @@ S = State
 # イベント名 → (遷移元の集合, 遷移先)。task.created は新規タスクなので遷移元を持たない。
 TRANSITIONS: dict[str, tuple[frozenset[State], State]] = {
     "task.created": (frozenset(), S.INTAKE),
-    "decision.requested": (frozenset({S.INTAKE}), S.NEEDS_DECISION),
-    "decision.resolved": (frozenset({S.NEEDS_DECISION}), S.INTAKE),
+    "intake.asked": (frozenset({S.INTAKE}), S.WAITING_INTAKE),
+    "intake.answered": (frozenset({S.WAITING_INTAKE}), S.INTAKE),
     "task.ready": (frozenset({S.INTAKE}), S.READY),
     "task.started": (frozenset({S.READY}), S.IN_PROGRESS),
-    "task.returned": (frozenset({S.IN_PROGRESS}), S.INTAKE),
+    "implement.asked": (frozenset({S.IN_PROGRESS}), S.WAITING_IMPLEMENT),
+    "implement.answered": (frozenset({S.WAITING_IMPLEMENT}), S.IN_PROGRESS),
     "task.submitted": (frozenset({S.IN_PROGRESS}), S.REVIEW),
     "review.changes_requested": (frozenset({S.REVIEW}), S.IN_PROGRESS),
-    "review.escalated": (frozenset({S.REVIEW}), S.NEEDS_DECISION),
-    "review.approved": (frozenset({S.REVIEW}), S.APPROVED),
-    "task.done": (frozenset({S.REVIEW, S.APPROVED}), S.DONE),
-    "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW, S.APPROVED}), S.FAILED),
+    "review.asked": (frozenset({S.REVIEW}), S.WAITING_REVIEW),
+    "review.answered": (frozenset({S.WAITING_REVIEW}), S.REVIEW),
+    "review.approved": (frozenset({S.REVIEW}), S.MERGING),
+    "merge.changes_requested": (frozenset({S.MERGING}), S.IN_PROGRESS),
+    "task.done": (frozenset({S.MERGING}), S.DONE),
+    "task.failed": (frozenset({S.INTAKE, S.IN_PROGRESS, S.REVIEW, S.MERGING}), S.FAILED),
     "task.reopened": (frozenset({S.FAILED}), S.INTAKE),
 }
 
 EVENTS = tuple(TRANSITIONS)
 
+# 判断待ちの状態 → (聞いた役の状態, 答えが出たときのイベント)。戻り先はタスクの項目ではなく状態で持つ
+WAITING: dict[State, tuple[State, str]] = {
+    S.WAITING_INTAKE: (S.INTAKE, "intake.answered"),
+    S.WAITING_IMPLEMENT: (S.IN_PROGRESS, "implement.answered"),
+    S.WAITING_REVIEW: (S.REVIEW, "review.answered"),
+}
+
+# 役の状態 → 立場に聞くときのイベント
+ASK = {S.INTAKE: "intake.asked", S.IN_PROGRESS: "implement.asked", S.REVIEW: "review.asked"}
+
 # イベントごとのペイロード（Event.data）のキー。hook はこれを当てにしてよい。
 # どのイベントにも遷移元の状態 "from" が付く（task.created は ""）。決断 ID の並びは必ず "questions" で渡す。
 EVENT_DATA: dict[str, tuple[str, ...]] = {
     "task.created": ("source",),
-    "decision.requested": ("channel", "questions"),
-    "decision.resolved": ("questions",),
+    "intake.asked": ("channel", "questions"),
+    "intake.answered": ("questions",),
     "task.ready": (),
     "task.started": (),
-    "task.returned": ("questions",),
+    "implement.asked": ("channel", "questions"),
+    "implement.answered": ("questions",),
     "task.submitted": ("pr",),
     "review.changes_requested": ("changes",),
-    "review.escalated": ("questions", "reasons"),
+    "review.asked": ("channel", "questions", "reasons"),
+    "review.answered": ("questions",),
     "review.approved": ("pr",),
-    "task.done": ("pr", "merged_by"),
+    "merge.changes_requested": ("changes",),
+    "task.done": ("pr",),
     "task.failed": ("role", "message"),
     "task.reopened": ("note",),
 }
 
 # 状態とイベントの説明。README の表と algr ui のヘルプはここから作るか、ここと突き合わせる（tests/test_help.py）
 STATE_HELP: dict[State, str] = {
-    S.INTAKE: "起票。未決事項をルールで埋め、埋まらないものは人に上げる",
-    S.NEEDS_DECISION: "人の答え待ち。答えると起票に戻る",
+    S.INTAKE: "起票。未決事項をルールで埋め、埋まらないものはクライアントに聞く",
+    S.WAITING_INTAKE: "起票の問いへのクライアントの答え待ち。答えがそろうと起票に戻る",
     S.READY: "未決事項が無くなり、配車を待つ。依存先がすべて done になるまで配車しない",
     S.IN_PROGRESS: "実装エージェントが実装し、PR を出す",
+    S.WAITING_IMPLEMENT: "実装の問いへのクライアントの答え待ち。答えがそろうと実装に戻る",
     S.REVIEW: "レビューエージェントが PR と判断を確かめる",
-    S.APPROVED: "レビューが通り、人のマージを待つ（flow.merge = \"human\" のときだけ）",
-    S.DONE: "マージ済み。人が答えた未決事項があれば蒸留エージェントが走る",
-    S.FAILED: "失敗。理由はタスクの failure に残り、人が reopen すると起票に戻る",
+    S.WAITING_REVIEW: "レビューの問いへのクライアントの答え待ち。答えがそろうとレビューに戻り、レビューが承認か修正依頼かを決める",
+    S.MERGING: "マージのアダプタに頼み、マージ先に入るのを待つ。PJ の修正依頼が来たら実装に戻る",
+    S.DONE: "マージ先に入った。クライアントが答えた未決事項があれば蒸留エージェントが走る",
+    S.FAILED: "失敗。理由はタスクの failure に残り、reopen すると起票に戻る",
 }
 
 # イベントごとの既定の処理
 EVENT_HELP: dict[str, str] = {
     "task.created": "起票エージェントを起動する",
-    "decision.requested": "人に知らせる（channel は聞き方の違いだけ）",
-    "decision.resolved": "起票エージェントを起動する",
+    "intake.asked": "クライアントに知らせる（channel は聞き方の違いだけ）",
+    "intake.answered": "起票エージェントを起動し直す",
     "task.ready": "配車を待つ",
     "task.started": "実装エージェントを起動する",
-    "task.returned": "起票エージェントを起動する（ルールで埋まらなければ人に聞く）",
+    "implement.asked": "クライアントに知らせる",
+    "implement.answered": "実装エージェントを起動し直す（前の PR と答えを渡す）",
     "task.submitted": "レビューエージェントを起動する",
     "review.changes_requested": "実装エージェントを起動する（前の PR と指摘を渡す）",
-    "review.escalated": "異議のある判断を未決事項として起票に差し戻し、人に知らせる",
-    "review.approved": "マージのゲート（`flow.merge = \"human\"`）のときだけ。人のマージを待つと知らせる（`algr watch` にも出る）",
-    "task.done": "ルールに従った判断を hit として記録し、人が答えた未決事項があれば蒸留エージェントを起動する",
-    "task.failed": "人に上げる",
+    "review.asked": "異議のある判断と新しい問いを未決事項にし、クライアントに知らせる",
+    "review.answered": "レビューエージェントを起動し直す（答えを持って承認か修正依頼かを決める）",
+    "review.approved": "マージのアダプタにマージを頼む（`request`）",
+    "merge.changes_requested": "PJ の指摘を修正依頼として、実装エージェントを起動する",
+    "task.done": "ルールに従った判断を hit として記録し、クライアントが答えた未決事項があれば蒸留エージェントを起動する",
+    "task.failed": "クライアントに知らせる",
     "task.reopened": "起票エージェントを起動する",
 }
 
@@ -95,7 +117,7 @@ def _no_open_questions(task: Task) -> str | None:
 
 
 def _has_open_questions(task: Task) -> str | None:
-    """人に上げる未決事項が残っていること。"""
+    """クライアントに聞く未決事項が残っていること。"""
     if not task.open_questions():
         return f"{task.id} has no open question to ask"
     return None
@@ -117,13 +139,17 @@ def _fills_have_grounds(task: Task) -> str | None:
 
 
 INVARIANTS: dict[str, tuple[Callable[[Task], str | None], ...]] = {
-    "decision.requested": (_has_open_questions,),
+    "intake.asked": (_has_open_questions,),
+    "intake.answered": (_no_open_questions,),
     "task.ready": (_no_open_questions, _fills_have_grounds),
-    "task.returned": (_has_open_questions,),
+    "implement.asked": (_has_open_questions,),
+    "implement.answered": (_no_open_questions,),
     "task.submitted": (_has_pr,),
-    "review.escalated": (_has_open_questions,),
     "review.changes_requested": (_has_pr,),
-    "review.approved": (_has_pr,),
+    "review.asked": (_has_open_questions,),
+    "review.answered": (_no_open_questions,),
+    "review.approved": (_has_pr, _no_open_questions),
+    "merge.changes_requested": (_has_pr,),
     "task.done": (_has_pr, _no_open_questions),
 }
 

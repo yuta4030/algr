@@ -21,12 +21,13 @@ from algr.model import Role
 CONFIG_FILE = "config.toml"
 
 DEFAULTS: dict[str, Any] = {
-    "flow": {"max_parallel": 1, "max_rework": 2, "merge": "auto"},
+    "flow": {"max_parallel": 1, "max_rework": 2},
     "adapters": {
         "task": {"use": "fake.tasks"},
         "trigger": {"use": "fake.inbox"},
         "executor": {"use": "fake.process"},
         "decisions": {"use": "fake.rules"},
+        "merge": {"use": "fake.merge"},
         "notify": {"use": "stub"},
     },
     "hooks": {},
@@ -38,6 +39,7 @@ BUILTIN_ADAPTERS = {
     "fake.inbox": "algr.adapters.fake:InboxTrigger",
     "fake.process": "algr.adapters.fake:LocalProcess",
     "fake.rules": "algr.adapters.fake:RuleFile",
+    "fake.merge": "algr.adapters.fake:InstantMerge",
     "stub": "algr.adapters.fake:StubNotifier",
     "k2down": "algr.adapters.k2down:K2down",
 }
@@ -155,11 +157,3 @@ class Config:
     @property
     def max_rework(self) -> int:
         return int(self.data["flow"]["max_rework"])
-
-    @property
-    def merge_gate(self) -> bool:
-        """レビューが通ったあと、マージに人のゲートを置くか。"""
-        value = self.data["flow"]["merge"]
-        if value not in ("auto", "human"):
-            raise ConfigError(f"flow.merge must be 'auto' or 'human', got {value!r}")
-        return value == "human"

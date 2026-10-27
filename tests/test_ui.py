@@ -5,7 +5,7 @@ import urllib.request
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from conftest import run_until
+from conftest import HoldMerge, run_until
 
 from algr import ui
 from algr.config import Config
@@ -14,11 +14,10 @@ from algr.engine import Engine
 
 @pytest.fixture
 def gated(repo) -> Engine:
-    (repo / ".algr" / "config.toml").write_text(
-        (repo / ".algr" / "config.toml").read_text(encoding="utf-8").replace("[flow]\n", '[flow]\nmerge = "human"\n'),
-        encoding="utf-8",
-    )
-    return Engine.from_config(Config.load(repo))
+    """マージ先が release するまで入れないエンジン。"""
+    engine = Engine.from_config(Config.load(repo))
+    engine.merger = HoldMerge()
+    return engine
 
 
 def by_id(snap):
@@ -30,7 +29,7 @@ def test_snapshot_shows_who_has_each_task(gated):
     gated.create("merge me")
     gated.create("fail")
     gated.create("later", depends=["I2"])
-    run_until(gated, lambda: {str(t.state) for t in gated.tasks.list()} >= {"needs-decision", "failed", "approved"})
+    run_until(gated, lambda: {str(t.state) for t in gated.tasks.list()} >= {"waiting-intake", "failed", "merging"})
 
     tasks = by_id(ui.snapshot(gated))
     assert tasks["I1"]["progress"] | {"since": None, "created": None} == {
@@ -38,8 +37,8 @@ def test_snapshot_shows_who_has_each_task(gated):
         "created": None, "since": None, "returned": 0, "changes": 0, "asked": 1,
     }  # fmt: skip
     assert tasks["I1"]["actions"] == [{"name": "answer", "cli": 'algr answer I1 I1-1="..."'}]
-    assert tasks["I2"]["progress"]["stage"] == "review"
-    assert tasks["I2"]["actions"] == [{"name": "merge", "cli": "algr merge I2"}]
+    assert (tasks["I2"]["progress"]["stage"], tasks["I2"]["progress"]["waiting"]) == ("merging", "merge")
+    assert tasks["I2"]["actions"] == []
     assert tasks["I3"]["progress"]["stage"] == "in-progress"
     assert tasks["I3"]["progress"]["failure"] == {"role": "implement", "message": "exit 1"}
     assert tasks["I3"]["actions"][0]["name"] == "reopen"
@@ -73,21 +72,21 @@ def test_history_counts_transitions_rules_and_jobs(gated):
     gated.decisions.add("auth: OAuth")
     gated.create("login", questions=[{"topic": "auth", "text": "How?"}])
     gated.create("ask", questions=[{"topic": "db", "text": "Where?"}])
-    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "approved" and str(gated.tasks.get("I2").state) == "needs-decision")
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "merging" and str(gated.tasks.get("I2").state) == "waiting-intake")
     gated.resolve("I2", {"I2-1": "sqlite"})
-    run_until(gated, lambda: str(gated.tasks.get("I2").state) == "approved" and not gated.tasks.get("I2").jobs)
-    assert gated.decisions.proposals() == []  # 蒸留は done になってから
-    gated.merge("I2")
-    run_until(gated, lambda: not gated.tasks.get("I2").jobs)
+    run_until(gated, lambda: str(gated.tasks.get("I2").state) == "merging" and not gated.tasks.get("I2").jobs)
+    assert gated.decisions.proposals() == []  # 蒸留はマージ先に入って done になってから
+    gated.merger.release("I2")
+    run_until(gated, lambda: str(gated.tasks.get("I2").state) == "done" and not gated.tasks.get("I2").jobs)
 
     h = ui.history(gated)
     edges = {(e["event"], e["from"]): e["count"] for e in h["flow"]["edges"]}
     assert edges[("task.started", "ready")] == 2
-    assert edges[("decision.requested", "intake")] == 1
+    assert edges[("intake.asked", "intake")] == 1
     assert edges[("task.reopened", "failed")] == 0  # 通っていない遷移も図に出す
     states = {s["state"]: s for s in h["flow"]["states"]}
-    assert (states["approved"]["now"], states["done"]["now"]) == (1, 1)
-    assert states["needs-decision"]["stay_median_s"] is not None
+    assert (states["merging"]["now"], states["done"]["now"]) == (1, 1)
+    assert states["waiting-intake"]["stay_median_s"] is not None
 
     rules = h["rules"]
     assert [(r["id"], [u["id"] for u in r["uses"]]) for r in rules["rules"]] == [("R001", ["I1-1"])]
@@ -138,11 +137,11 @@ def test_snapshot_shows_distill_waiting_for_capacity(engine, monkeypatch):
 def test_review_shows_what_changed_and_why_each_proposal(gated):
     gated.decisions.add("auth: OAuth")
     gated.create("ask", questions=[{"topic": "db", "text": "Where?"}])
-    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "needs-decision")
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "waiting-intake")
     gated.resolve("I1", {"I1-1": "sqlite"})
-    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "approved")
-    gated.merge("I1")
-    run_until(gated, lambda: not gated.tasks.get("I1").jobs)
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "merging")
+    gated.merger.release("I1")
+    run_until(gated, lambda: str(gated.tasks.get("I1").state) == "done" and not gated.tasks.get("I1").jobs)
 
     r = ui.review(gated)
     assert (r["current"]["done"], r["current"]["asked"], r["previous"]["asked"]) == (1, 1, 0)

@@ -62,3 +62,21 @@ def run_until(engine: Engine, done: Callable[[], bool], timeout: float = 10.0) -
 
 def state(engine: Engine, task_id: str) -> str:
     return str(engine.tasks.get(task_id).state)
+
+
+class HoldMerge:
+    """マージのアダプタの代わり。release するまで open を返し、マージ先で止まったタスクを作る。"""
+
+    def __init__(self) -> None:
+        self.released: set[str] = set()
+
+    def request(self, task) -> None:
+        pass
+
+    def status(self, task):
+        from algr.adapters import MergeState, MergeStatus
+
+        return MergeStatus(MergeState.MERGED if task.id in self.released else MergeState.OPEN)
+
+    def release(self, task_id: str) -> None:
+        self.released.add(task_id)
