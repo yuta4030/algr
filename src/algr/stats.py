@@ -75,9 +75,12 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     # 方針のタスク（蒸留）はイベントを出さないので、フローに流れたタスクのジョブだけを数える
     by_role: dict[str, int] = {}
+    tokens_by_role: dict[str, int] = {}
     for r in records:
         if "job_started" in r and r["task_id"] in by_task:
             by_role[r["role"]] = by_role.get(r["role"], 0) + 1
+        elif "job" in r and r["task_id"] in by_task:
+            tokens_by_role[r["role"]] = tokens_by_role.get(r["role"], 0) + sum(r.get("usage", {}).values())
 
     by_kind: dict[str, int] = {}
     for j in jobs:
@@ -99,6 +102,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "decision_wait_median_s": median(waits) if waits else None,
         "jobs_by_role": by_role,
         "jobs_per_task": _rate(sum(by_role.values()), created),
+        "tokens_by_role": tokens_by_role,
         "tokens_per_task": _rate(sum(by_kind.values()), created),
         "tokens_per_task_by_kind": {kind: _rate(n, created) for kind, n in by_kind.items()},
     }
