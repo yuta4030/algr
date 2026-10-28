@@ -60,10 +60,11 @@ STP 率（回答・やり直しが一度も入らずに done になった割合�
 クライアントに聞いた回数（判断待ちの状態ごと。`asked_by_state`）、PJ メンバーの修正依頼の回数（`merge.changes_requested`。algr のレビューが見逃した数。`merge_changes_requested`）、
 役ごとのジョブの本数とタスクあたりの本数（`jobs_by_role`・`jobs_per_task`。走り直しがどれだけ減ったか）、
 役ごとのトークン数（`tokens_by_role`。起票で増えた分を実装・レビューの減りで取り戻せたか）、
+役ごとの消えたジョブの本数（`lost_by_role`。再起動などで結果を残さずに消え、同じ役で出し直したもの。ジョブの終了の `state` が `lost` のもの）、
 タスクあたりのトークン数（合計と、キャッシュの読み込み・書き込みを分けた項目ごと）、
 蒸留が返した提案の数と、そのうち前の蒸留と同じ提案 ID が返った重複の数（`proposals`・`duplicate_proposals`。方針のタスクの蒸留も含む。答えるたびの即提案で重複が多いなら、周期のまとめ直しを考える）を出します。実装中とレビューでの差し戻し率は、それぞれ `implement.asked` と `review.asked` が出たタスクの割合です。
 聞いた回数は、どの判断待ち（`waiting-intake` / `waiting-implement` / `waiting-review`）で多いかを見て、どこのルールが足りないかを探すのに使います。
-役ごとのジョブの本数とトークン数は方針のタスク（`algr distill`）の蒸留を含みません。集計にはログを使いますが、フローの判定には使いません。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`。蒸留なら読んだ未決事項の `questions` と report の候補の数の `report` も持つ）と終了（`job`。使ったトークン数の `usage` と往復の回数の `turns`、失敗の理由の `message`、蒸留が出した提案の `proposals` を持つ）、hook の失敗（`hook_error`）、マージのアダプタの失敗（`merge_error`）も時刻付きで残ります。
+役ごとのジョブの本数とトークン数は方針のタスク（`algr distill`）の蒸留を含みません。集計にはログを使いますが、フローの判定には使いません。`events.jsonl` にはイベントのほか、ジョブの起動（`job_started`。蒸留なら読んだ未決事項の `questions` と report の候補の数の `report` も持つ）と終了（`job`。終わり方の `state`（`completed` / `failed` / `lost`）、使ったトークン数の `usage` と往復の回数の `turns`、失敗の理由の `message`、蒸留が出した提案の `proposals` を持つ）、hook の失敗（`hook_error`）、マージのアダプタの失敗（`merge_error`）も時刻付きで残ります。
 
 `algr watch` は常駐して tick を回し続けます（`--interval` 秒ごと）。トリガーの取り込みと ready の配車が止まらないようにするためのプロセスで、
 起きたイベントを 1 行ずつ出します。SIGINT（Ctrl-C）か SIGTERM で、いまの tick を終えてから止まります。
@@ -243,6 +244,7 @@ model = "haiku"                         # claude の --model。ほかに command
 [flow]
 max_parallel = 1                        # 同時に in-progress にするタスクの数
 max_rework = 2                          # レビューの修正依頼で実装に戻す回数の上限（PJ の修正依頼は数えない）
+max_lost = 2                            # 消えたジョブを同じ役で出し直す回数の上限（タスク全体で数える。超えたら failed）
 
 [adapters.task]
 use = "fake.tasks"                      # 組み込み名
@@ -277,6 +279,10 @@ model = "haiku"
 | `decisions` | ルールの提示、判断の記録と集計、ルールの提案（k2down 互換の操作） | `fake.rules`：rules.json と usage.jsonl。`k2down`：k2down の CLI |
 | `merge` | 承認した PR をマージ先に入れる（`request(task)` / `status(task)`） | `fake.merge`：頼まれたらすぐ `merged` を返す |
 | `notify` | 判断待ちと失敗を立場に届ける | `stub`：ファイルに追記 |
+
+`executor` の `status` は、ジョブが結果を残さずに消えたら（再起動など。起動しそこねたものも含む）`RunState.LOST` を返します。
+コアはクライアントに聞かずに同じ役のジョブを出し直し、タスク全体で `flow.max_lost` 回を超えたら failed にします（蒸留は出し直さず、通知だけします）。
+`LOST` を返さない既存のアダプタでは、これまでどおり `FAILED` として扱われます。
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。
 `ALGR_JOB_FILE` には `{"id", "role", "task", "input"}` が入っていて、コマンドは役ごとの結果を `ALGR_RESULT_FILE` に書いて終了します。

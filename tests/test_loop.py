@@ -13,6 +13,7 @@ from algr.adapters import AdapterError, MergeState, MergeStatus
 from algr.agents import ResultError, parse
 from algr.flow import TransitionError
 from algr.model import Decision, Event, Role, State
+from algr.stats import summarize
 
 
 def names(engine, task_id):
@@ -231,14 +232,44 @@ def test_capacity_defers_jobs_to_a_later_tick(engine, repo):
     run_until(engine, lambda: state(engine, "I1") == State.DONE and state(engine, "I2") == State.DONE)
 
 
-def test_lost_job_fails_the_task(engine):
-    engine.create("slow lost")
-    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS)
+def lose_implement(engine):
+    """走っている実装のジョブを、終了コードを残さずに消す（再起動などの代わり）。"""
     job_id = engine.tasks.get("I1").jobs["implement"]
     engine.executor.stop(job_id)
-    (engine.executor.dir / job_id / "exit").unlink()  # 終了コードを残さずに消えた
+    (engine.executor.dir / job_id / "exit").unlink()
+    return job_id
+
+
+def test_lost_job_is_started_again_until_the_limit(engine):
+    engine.max_lost = 1
+    engine.create("slow lost")
+    run_until(engine, lambda: state(engine, "I1") == State.IN_PROGRESS)
+    lost = lose_implement(engine)
+    # 消えたのは実行場所の問題なので、failed にせず同じ役のジョブを出し直す
+    run_until(engine, lambda: engine.tasks.get("I1").jobs.get("implement") not in (None, lost))
+    task = engine.tasks.get("I1")
+    assert (task.state, task.lost, engine.notifier.sent()) == (State.IN_PROGRESS, 1, [])
+    records = [json.loads(line) for line in engine.event_log.read_text(encoding="utf-8").splitlines()]
+    record = next(r for r in records if r.get("job") == lost)
+    assert (record["state"], record["message"]) == ("lost", "lost")  # 新しいイベントは足さず、ジョブの終了の記録に残す
+    assert summarize(records)["lost_by_role"] == {"implement": 1}
+
+    # 上限を超えて消えたら failed にし、reopen で数え直す
+    lose_implement(engine)
     run_until(engine, lambda: state(engine, "I1") == State.FAILED)
-    assert engine.notifier.sent()[-1]["message"] == "I1 failed: lost"
+    assert engine.notifier.sent()[-1]["message"] == "I1 failed: job lost more than 1 times: lost"
+    assert engine.reopen("I1").lost == 0
+
+
+def test_job_that_never_started_is_started_again(engine):
+    engine.executor.max_parallel = 0  # 起票のジョブを起動させず、保存だけされた形を作る
+    engine.create("never started")
+    task = engine.tasks.get("I1")
+    task.jobs["intake"] = "I1.intake.99"
+    engine.tasks.save(task)
+    engine.executor.max_parallel = 4
+    run_until(engine, lambda: state(engine, "I1") == State.DONE)
+    assert engine.tasks.get("I1").lost == 1
 
 
 def test_run_returns_when_idle(engine):

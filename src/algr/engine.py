@@ -78,6 +78,7 @@ class Engine:
         hooks: dict[str, list[Hook]] | None = None,
         max_parallel: int = 1,
         max_rework: int = 2,
+        max_lost: int = 2,
         agents: dict[str, dict[str, Any]] | None = None,
         event_log: Path | None = None,
     ) -> None:
@@ -90,6 +91,7 @@ class Engine:
         self.hooks = hooks or {}
         self.max_parallel = max_parallel
         self.max_rework = max_rework
+        self.max_lost = max_lost
         self.agents = agents or {}
         self.event_log = event_log
         self.events: list[Event] = []
@@ -111,6 +113,7 @@ class Engine:
             hooks=config.hooks(),
             max_parallel=config.max_parallel,
             max_rework=config.max_rework,
+            max_lost=config.max_lost,
             agents=config.agents(),
             event_log=config.ctx.path(".algr/state/events.jsonl"),
         )
@@ -222,11 +225,11 @@ class Engine:
         return self.tasks.get(task.id)
 
     def reopen(self, task_id: str, note: str = "") -> Task:
-        """クライアントが failed のタスクを起票に戻す。依頼を通せなかったので、やり直すかは依頼した側が決める。修正依頼の回数は数え直す。"""
+        """クライアントが failed のタスクを起票に戻す。依頼を通せなかったので、やり直すかは依頼した側が決める。修正依頼と消えたジョブの回数は数え直す。"""
         task = self.tasks.get(task_id)
         if task.state != State.FAILED:
             raise flow.TransitionError(f"{task_id} is {task.state}, not failed")
-        task.reworks, task.failure = 0, None
+        task.reworks, task.lost, task.failure = 0, 0, None
         self.emit("task.reopened", task, note=note)
         return self.tasks.get(task_id)
 
@@ -451,6 +454,14 @@ class Engine:
         if role != Role.DISTILL and ROLE_FOR_STATE.get(task.state) != role:
             self.tasks.save(task)  # 状態が先に進んだあとで届いた古い結果は捨てる
             return {}
+        if status.state == RunState.LOST and role != Role.DISTILL:
+            # 消えたのは実行場所の問題なので、クライアントに聞かずに同じ役のジョブを出し直す。出し直しは tick の _start_jobs が行う
+            if task.lost >= self.max_lost:
+                self._fail(task, role, f"job lost more than {self.max_lost} times: {status.message}")
+            else:
+                task.lost += 1
+                self.tasks.save(task)
+            return {"message": status.message}
         result = None
         if status.state == RunState.COMPLETED:
             try:
@@ -461,7 +472,8 @@ class Engine:
                 result, status.message = None, f"bad result from {role}: {e}"
         if result is None:
             self._job_failed(task, Role(role), status.message)
-            return {"state": "failed", "message": status.message}  # 結果が読めなかったものも失敗として残す
+            # 結果が読めなかったものも失敗として残す。消えた蒸留は lost のまま残す
+            return {"message": status.message} | ({"state": "failed"} if status.state == RunState.COMPLETED else {})
         proposals = self._job_done(task, result)
         # 別件の起票は、このタスクの保存が通ってから行う。ぶつかって結果を受け取り直しても二重に起票しない
         for new in getattr(result, "tasks", []):

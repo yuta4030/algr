@@ -178,12 +178,12 @@ class LocalProcess:
     def status(self, job_id: str) -> RunStatus:
         run = self._run_dir(job_id)
         if not (run / "pid").exists():
-            return RunStatus(RunState.FAILED, message="not started")
+            return RunStatus(RunState.LOST, message="not started")  # ジョブを保存してから起動するまでのあいだに落ちた
         if not (run / "exit").exists():
             if self._alive(run):
                 return RunStatus(RunState.RUNNING)
             if not (run / "exit").exists():  # 生死を見るあいだに終わった場合を除く
-                return RunStatus(RunState.FAILED, message="lost")  # 再起動などで、終了コードを残さずに消えた
+                return RunStatus(RunState.LOST, message="lost")  # 再起動などで、終了コードを残さずに消えた
         self._alive(run)  # 終わった包みを刈り取っておく
         code = int((run / "exit").read_text(encoding="utf-8").strip())
         result_path = run / "result.json"

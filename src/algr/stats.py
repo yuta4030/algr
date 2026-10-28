@@ -76,11 +76,14 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
     # 方針のタスク（蒸留）はイベントを出さないので、フローに流れたタスクのジョブだけを数える
     by_role: dict[str, int] = {}
     tokens_by_role: dict[str, int] = {}
+    lost_by_role: dict[str, int] = {}
     for r in records:
         if "job_started" in r and r["task_id"] in by_task:
             by_role[r["role"]] = by_role.get(r["role"], 0) + 1
         elif "job" in r and r["task_id"] in by_task:
             tokens_by_role[r["role"]] = tokens_by_role.get(r["role"], 0) + sum(r.get("usage", {}).values())
+            if r.get("state") == "lost":
+                lost_by_role[r["role"]] = lost_by_role.get(r["role"], 0) + 1
 
     # 同じ提案は判断ストアが同じ ID で返すので、2 回目からを重複として数える。方針のタスクの蒸留も含める
     returned = [pid for j in jobs for pid in j.get("proposals", [])]
@@ -106,6 +109,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "jobs_by_role": by_role,
         "jobs_per_task": _rate(sum(by_role.values()), created),
         "tokens_by_role": tokens_by_role,
+        "lost_by_role": lost_by_role,
         "proposals": len(returned),
         "duplicate_proposals": len(returned) - len(set(returned)),
         "tokens_per_task": _rate(sum(by_kind.values()), created),

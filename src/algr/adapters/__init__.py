@@ -70,6 +70,8 @@ class RunState(StrEnum):
     BLOCKED = "blocked"  # エージェントが立場を待っている。attach を持つアダプタなら入って答えられる
     COMPLETED = "completed"
     FAILED = "failed"
+    # 再起動などで、結果を残さずに消えた（起動しそこねたものも含む）。実行場所の問題なので、コアは同じ役のジョブを出し直す
+    LOST = "lost"
 
 
 @dataclass
