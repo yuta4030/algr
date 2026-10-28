@@ -3,6 +3,8 @@ import json
 import pytest
 
 from algr.cli import main
+from algr.config import Config
+from algr.engine import Engine
 
 
 @pytest.fixture
@@ -49,6 +51,17 @@ def test_text_output(repo, capsys):
     assert capsys.readouterr().out == "I1 [intake] Add login\n  ? I1-1 How?\n"
     main(["-C", str(repo), "run", "--interval", "0.02"])
     assert capsys.readouterr().out == "I1 intake.asked\n"
+
+
+def test_scopes_in_rules_and_proposals(repo, capsys):
+    decisions = Engine.from_config(Config.load(repo)).decisions
+    decisions.add("db: sqlite", scopes=["implement", "review"])
+    decisions.propose("auth: OAuth", "I1-1", scopes=["intake"])
+    main(["-C", str(repo), "rules"])
+    main(["-C", str(repo), "proposals"])
+    assert capsys.readouterr().out == "R001 db: sqlite [implement, review]\nP001 auth: OAuth [intake] (from I1-1)\n"
+    main(["-C", str(repo), "--json", "rules"])
+    assert json.loads(capsys.readouterr().out)["rules"] == [{"id": "R001", "text": "db: sqlite", "scopes": ["implement", "review"]}]
 
 
 def test_unencodable_output(repo, monkeypatch):
@@ -126,7 +139,7 @@ def test_distill_a_policy_and_retire_the_rule_it_replaces(algr, repo, capsys):
     assert [r["id"] for r in algr("rules")[1]["rules"]] == ["R001"]
     algr("accept", "P002")
     algr("accept", "P001")
-    assert algr("rules")[1]["rules"] == [{"id": "R002", "text": "db: postgres"}]
+    assert algr("rules")[1]["rules"] == [{"id": "R002", "text": "db: postgres", "scopes": []}]
 
     # 方針のタスクはフローに流れず、イベントも出さない
     _, data, _ = algr("stats")
