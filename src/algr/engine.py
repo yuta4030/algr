@@ -79,6 +79,7 @@ class Engine:
         max_parallel: int = 1,
         max_rework: int = 2,
         max_lost: int = 2,
+        max_distill: int = 2,
         agents: dict[str, dict[str, Any]] | None = None,
         event_log: Path | None = None,
     ) -> None:
@@ -92,6 +93,7 @@ class Engine:
         self.max_parallel = max_parallel
         self.max_rework = max_rework
         self.max_lost = max_lost
+        self.max_distill = max_distill
         self.agents = agents or {}
         self.event_log = event_log
         self.events: list[Event] = []
@@ -114,6 +116,7 @@ class Engine:
             max_parallel=config.max_parallel,
             max_rework=config.max_rework,
             max_lost=config.max_lost,
+            max_distill=config.max_distill,
             agents=config.agents(),
             event_log=config.ctx.path(".algr/state/events.jsonl"),
         )
@@ -372,8 +375,9 @@ class Engine:
 
     def _wanted(self, task: Task) -> list[Role]:
         roles = [ROLE_FOR_STATE[task.state]] if task.state in ROLE_FOR_STATE else []
-        # 蒸留はタスクが done になってから 1 回にまとめる。途中で答えが変わっても最後の答えで蒸留し、マージされた答えだけをルールの候補にする
-        if task.to_distill and task.state == State.DONE:
+        # 蒸留はタスクが done になってから 1 回にまとめる。途中で答えが変わっても最後の答えで蒸留し、マージされた答えだけをルールの候補にする。
+        # 失敗した蒸留は to_distill が残るので出し直す。max_distill 回を超えたら止める
+        if task.to_distill and task.state == State.DONE and task.distill_failures <= self.max_distill:
             roles.append(Role.DISTILL)
         return roles
 
@@ -402,9 +406,8 @@ class Engine:
             record: dict[str, Any] = {"job_started": job.id, "task_id": task.id, "role": str(role)}
             if role == Role.DISTILL:
                 # 蒸留が何を読んだか（クライアントの答えと report の候補の数）を残し、画面で見えるようにする
-                record["questions"] = task.to_distill
+                record["questions"] = list(task.to_distill)
                 record["report"] = {k: len(v) for k, v in (report or {}).items() if k != "rules" and isinstance(v, list)}
-                task.to_distill = []
             task.jobs[role] = job.id
             self.tasks.save(task)
             self.executor.start(job)
@@ -499,8 +502,11 @@ class Engine:
 
     def _job_failed(self, task: Task, role: Role, message: str) -> None:
         if role == Role.DISTILL:
+            # 蒸留は done のあとに走るので failed にはできない。答えは to_distill に残し、上限までは次の tick で出し直す
+            task.distill_failures += 1
             self.tasks.save(task)
-            self.notifier.notify(task, f"{task.id} distill failed: {message}")
+            stop = f" (gave up after {task.distill_failures} failures)" if task.distill_failures > self.max_distill else ""
+            self.notifier.notify(task, f"{task.id} distill failed: {message}{stop}")
         else:
             self._fail(task, role, message)
 
@@ -521,6 +527,8 @@ class Engine:
             # 同じ提案は二重に出ないので、ぶつかって受け取り直しても ID は変わらない
             proposals = [self.decisions.propose(r["rule"], source=r["source"], scopes=r["scopes"]) for r in result.rules]
             proposals += [self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"]) for r in result.retire]
+            # done のタスクには新しい答えが入らないので、蒸留が読んだ答えは to_distill のすべて
+            task.to_distill = []
             self.tasks.save(task)
             return proposals
         return []

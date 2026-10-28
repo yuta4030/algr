@@ -21,7 +21,7 @@ from algr.model import Role
 CONFIG_FILE = "config.toml"
 
 DEFAULTS: dict[str, Any] = {
-    "flow": {"max_parallel": 1, "max_rework": 2, "max_lost": 2},
+    "flow": {"max_parallel": 1, "max_rework": 2, "max_lost": 2, "max_distill": 2},
     "adapters": {
         "task": {"use": "fake.tasks"},
         "trigger": {"use": "fake.inbox"},
@@ -161,3 +161,7 @@ class Config:
     @property
     def max_lost(self) -> int:
         return int(self.data["flow"]["max_lost"])
+
+    @property
+    def max_distill(self) -> int:
+        return int(self.data["flow"]["max_distill"])

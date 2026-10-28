@@ -498,18 +498,49 @@ def test_failed_dependency_is_reported_with_its_dependents(engine):
     assert "I1 failed: exit 1 (blocks I2)" in [m["message"] for m in engine.notifier.sent()]
 
 
-def test_distill_cannot_retire_unknown_rules(engine, repo):
-    task = engine.request_distill("anything")
-    # ジョブが終わるのを tick せずに待ち、結果を知らないルールを外す提案に差し替える
-    run = engine.executor.dir / task.jobs["distill"]
+def break_distill(engine, task_id="I1"):
+    """蒸留のジョブが終わるのを tick せずに待ち、結果を知らないルールを外す提案（読めない結果）に差し替えて tick する。"""
+    job_id = engine.tasks.get(task_id).jobs["distill"]
+    run = engine.executor.dir / job_id
     deadline = time.monotonic() + 10
     while not (run / "exit").exists() and time.monotonic() < deadline:
         time.sleep(0.02)
-    retire = [{"rule_id": "R404", "reason": "x", "source": "I1-1"}]
+    retire = [{"rule_id": "R404", "reason": "x", "source": f"{task_id}-1"}]
     (run / "result.json").write_text(json.dumps({"rules": [], "retire": retire}), encoding="utf-8")
     engine.tick()
+    return job_id
+
+
+def test_distill_cannot_retire_unknown_rules(engine, repo):
+    engine.request_distill("anything")
+    break_distill(engine)
     assert engine.decisions.proposals() == []
     assert engine.notifier.sent()[-1]["message"] == "I1 distill failed: bad result from distill: retire unknown rules: R404"
+
+
+def test_failed_distill_keeps_answers_and_is_started_again(engine):
+    engine.request_distill("anything", topic="ci")
+    failed = break_distill(engine)
+    # 答えは蒸留待ちに残し、同じ tick で蒸留を出し直す
+    task = engine.tasks.get("I1")
+    assert (task.to_distill, task.distill_failures) == (["I1-1"], 1)
+    assert task.jobs["distill"] != failed
+    run_until(engine, lambda: not engine.tasks.get("I1").jobs)
+    assert engine.tasks.get("I1").to_distill == []  # 蒸留が結果を返してはじめて空にする
+    assert len(engine.decisions.proposals()) == 1
+
+
+def test_failed_distill_stops_after_the_limit(engine):
+    engine.max_distill = 1
+    engine.request_distill("anything")
+    break_distill(engine)
+    break_distill(engine)
+    task = engine.tasks.get("I1")
+    # 上限を超えたら出し直しを止める。done のタスクは failed にせず、答えは蒸留待ちに残す
+    assert (task.state, task.jobs, task.to_distill, task.distill_failures) == (State.DONE, {}, ["I1-1"], 2)
+    assert engine.notifier.sent()[-1]["message"].endswith("(gave up after 2 failures)")
+    engine.tick()
+    assert engine.tasks.get("I1").jobs == {}
 
 
 def test_agents_can_file_follow_up_tasks(engine):

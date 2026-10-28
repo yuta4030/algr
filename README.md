@@ -245,6 +245,7 @@ model = "haiku"                         # claude の --model。ほかに command
 max_parallel = 1                        # 同時に in-progress にするタスクの数
 max_rework = 2                          # レビューの修正依頼で実装に戻す回数の上限（PJ の修正依頼は数えない）
 max_lost = 2                            # 消えたジョブを同じ役で出し直す回数の上限（タスク全体で数える。超えたら failed）
+max_distill = 2                         # 失敗した蒸留のジョブを出し直す回数の上限（超えたら止めて通知する。答えは蒸留待ちに残る）
 
 [adapters.task]
 use = "fake.tasks"                      # 組み込み名
@@ -281,7 +282,8 @@ model = "haiku"
 | `notify` | 判断待ちと失敗を立場に届ける | `stub`：ファイルに追記 |
 
 `executor` の `status` は、ジョブが結果を残さずに消えたら（再起動など。起動しそこねたものも含む）`RunState.LOST` を返します。
-コアはクライアントに聞かずに同じ役のジョブを出し直し、タスク全体で `flow.max_lost` 回を超えたら failed にします（蒸留は出し直さず、通知だけします）。
+コアはクライアントに聞かずに同じ役のジョブを出し直し、タスク全体で `flow.max_lost` 回を超えたら failed にします。
+蒸留は消えても結果が読めなくても、クライアントの答えを蒸留待ちに残したまま次の tick で出し直し、`flow.max_distill` 回を超えたら出し直しを止めて通知します（蒸留はタスクが done になってから走るので failed にはしません）。
 `LOST` を返さない既存のアダプタでは、これまでどおり `FAILED` として扱われます。
 
 `fake.process` のコマンドには `ALGR_JOB_ID` / `ALGR_ROLE` / `ALGR_JOB_FILE` / `ALGR_RESULT_FILE` が渡ります。

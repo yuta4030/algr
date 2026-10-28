@@ -87,7 +87,8 @@ class Task:
     seq: int = 0  # 決断 ID の採番。未決事項と判断で共有し、消しても番号は使い回さない
     jobs: dict[str, str] = field(default_factory=dict)  # 役 → 走っているジョブの ID
     runs: int = 0  # ジョブの採番。やり直しても同じ ID のジョブにならないようにする
-    to_distill: list[str] = field(default_factory=list)  # 蒸留を待つ、人が答えた未決事項の ID
+    to_distill: list[str] = field(default_factory=list)  # 蒸留を待つ、人が答えた未決事項の ID。蒸留が結果を返したら空にする
+    distill_failures: int = 0  # 蒸留のジョブが失敗した（消えたも含む）回数。上限を超えたら出し直しを止め、to_distill は残す
     usage: dict[str, int] = field(default_factory=dict)  # このタスクのジョブが使ったトークン数の合計
     failure: dict[str, str] | None = None  # failed になった理由（role と message）。task.failed で埋め、reopen で消す
     version: int = 0  # 保存の版。TaskAdapter.save が楽観ロックに使い、保存するたびに 1 つ進める

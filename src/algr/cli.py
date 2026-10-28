@@ -56,6 +56,7 @@ INIT_CONFIG = """\
 max_parallel = 1  # 同時に in-progress にするタスクの数
 max_rework = 2    # レビューの修正依頼で実装に戻す回数の上限。超えたら failed（PJ の修正依頼は数えない）
 max_lost = 2      # 消えたジョブ（再起動などで結果を残さずに止まった）を出し直す回数の上限。超えたら failed
+max_distill = 2   # 失敗した蒸留のジョブを出し直す回数の上限。超えたら出し直しを止めて通知する（答えは蒸留待ちに残る）
 
 [adapters.task]
 use = "fake.tasks"
