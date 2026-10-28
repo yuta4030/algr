@@ -10,7 +10,7 @@
 - review：   objections は判断への異議、questions は判断に結び付かない問い（どちらもクライアントに聞く）。
              changes はテスト失敗やバグなど判断以外の指摘（実装に戻す）。聞いたら答えを持って走り直し、承認か修正依頼かを決める
 - distill：  source は元になった決断 ID（report の候補から出した提案には無い）。rules は足す提案、retire は外す提案。
-             足す提案の scope はルールの範囲（役の名前）で、無ければ範囲なし（どの役にも渡る）
+             足す提案の scopes はルールの範囲（役の名前の配列）で、無ければ範囲なし（どの役にも渡る）
              どちらもメタプログラマーが accept してはじめてルールに効く。
              クライアントの答えのほか、input.report（落とす候補・書き直す候補）からも外す提案と言い直し（新しいルールと外す提案の対）を出す
 
@@ -48,7 +48,7 @@ ROLE_HELP: dict[Role, dict[str, str]] = {
     Role.DISTILL: {
         "name": "蒸留",
         "when": "done になったタスクに、クライアントが答えた未決事項がある時（1 タスク 1 回。`algr distill` の方針はすぐ）",
-        "result": '`{"rules": [{"rule", "source"?, "scope"?}], "retire"?: [{"rule_id", "reason", "source"?}]}`',
+        "result": '`{"rules": [{"rule", "source"?, "scopes"?}], "retire"?: [{"rule_id", "reason", "source"?}]}`',
     },
 }
 
@@ -178,8 +178,8 @@ def parse(role: Role, data: Any) -> IntakeResult | ImplementResult | ReviewResul
         rules, retire = _texts(data.get("rules", []), "rule"), _texts(data.get("retire", []), "rule_id", "reason")
         if not all(isinstance(i.get("source", ""), str) for i in [*rules, *retire]):
             raise ResultError("expected source to be a decision ID")
-        if not all(i.get("scope", "") in SCOPES for i in rules):
-            raise ResultError(f"rules[].scope must be one of {', '.join(sorted(SCOPES - {''}))} or omitted")
-        rules = [{**i, "source": i.get("source", ""), "scope": i.get("scope", "")} for i in rules]
+        if not all(isinstance(i.get("scopes", []), list) and all(s in SCOPES - {""} for s in i.get("scopes", [])) for i in rules):
+            raise ResultError(f"rules[].scopes must be a list of {', '.join(sorted(SCOPES - {''}))} or omitted")
+        rules = [{**i, "source": i.get("source", ""), "scopes": i.get("scopes", [])} for i in rules]
         return DistillResult(rules, [{**i, "source": i.get("source", "")} for i in retire])
     raise ResultError(f"unknown role: {role}")

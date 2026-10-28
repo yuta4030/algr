@@ -85,7 +85,7 @@ class K2down:
             return []
         # --scope を付けると、k2down がその範囲のルールと範囲の無いルールを返す
         data = json.loads(self._run("list", "--json", *(["--scope", scope] if scope else [])))
-        return [Rule(r["id"], r["rule"]) for r in data["rules"] if r["id"].startswith("R")]
+        return [Rule(r["id"], r["rule"], tuple(r.get("scopes", []))) for r in data["rules"] if r["id"].startswith("R")]
 
     def apply(self, decision: str, problem: str, rule_ids: list[str]) -> None:
         if rule_ids:
@@ -113,8 +113,8 @@ class K2down:
 
     # --- 提案（k2down の propose / proposals / accept / decline） ---------------
 
-    def propose(self, rule: str, source: str, scope: str = "") -> str:
-        args = ["propose", "add", _one_line(rule), *_decision(source), *(["--scope", scope] if scope else []), "--json"]
+    def propose(self, rule: str, source: str, scopes: list[str] | None = None) -> str:
+        args = ["propose", "add", _one_line(rule), *_decision(source), *(a for s in scopes or [] for a in ("--scope", s)), "--json"]
         return json.loads(self._run(*args))["id"]
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
@@ -129,6 +129,8 @@ class K2down:
             p.setdefault("decision", "")
             if p["kind"] == "retire":
                 p.setdefault("reason", "")
+            else:
+                p.setdefault("scopes", [])
             out.append(p)
         return out
 

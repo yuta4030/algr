@@ -26,9 +26,14 @@ def option(name):
     return args[args.index(name) + 1] if name in args else None
 
 
-def add_rule(text, scope=None):
+def options(name):
+    return [args[i + 1] for i, a in enumerate(args) if a == name]
+
+
+def add_rule(text, scopes=None):
+    # k2down は範囲を scopes（配列）で持ち、範囲の無いルールには項目を出さない
     rule_id = f"R{len(rules) + 1:03d}"
-    rules.append({"id": rule_id, "rule": text, "parent": "N000", **({"scope": scope} if scope else {})})
+    rules.append({"id": rule_id, "rule": text, "parent": "N000", **({"scopes": scopes} if scopes else {})})
     rules_file.write_text(json.dumps(rules), encoding="utf-8")
     return rule_id
 
@@ -49,10 +54,10 @@ def pending(proposal_id):
 if command == "list":
     # --scope を付けると、その範囲のルールと範囲の無いルールだけを返す
     scope = option("--scope")
-    listed = [r for r in rules if scope is None or r.get("scope") in (None, scope)]
+    listed = [r for r in rules if scope is None or not r.get("scopes") or scope in r["scopes"]]
     print(json.dumps({"rules": [{"id": "N000", "rule": "全体", "parent": None}, *listed]}))
 elif command == "add":
-    print(add_rule(args[0], option("--scope")))
+    print(add_rule(args[0], options("--scope")))
 elif command == "retire":
     rules_file.write_text(json.dumps([r for r in rules if r["id"] != args[0]]), encoding="utf-8")
 elif command == "apply" and "R404" in args:
@@ -62,9 +67,11 @@ elif command == "propose":
     proposal = {"kind": kind, ("rule" if kind == "add" else "rule_id"): target}
     if option("--decision") is not None:
         proposal["decision"] = option("--decision")
-    for key in ("source", "reason", "scope"):
+    for key in ("source", "reason"):
         if option(f"--{key}") is not None:
             proposal[key] = option(f"--{key}")
+    if options("--scope"):
+        proposal["scopes"] = options("--scope")
     same = next((p for p in proposals["proposals"] if p["kind"] == kind and p.get("rule", p.get("rule_id")) == target), None)
     created = same is None
     if created:
@@ -81,7 +88,7 @@ elif command == "accept":
         rule_id = proposal["rule_id"]
         rules_file.write_text(json.dumps([r for r in rules if r["id"] != rule_id]), encoding="utf-8")
     else:
-        rule_id = add_rule(proposal["rule"], proposal.get("scope"))
+        rule_id = add_rule(proposal["rule"], proposal.get("scopes"))
     proposals["proposals"].remove(proposal)
     proposals_file.write_text(json.dumps(proposals), encoding="utf-8")
     print(json.dumps({"accepted": [{"proposal": proposal["id"], "kind": proposal["kind"], "rule_id": rule_id}]}))

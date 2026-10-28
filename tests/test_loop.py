@@ -37,7 +37,7 @@ def test_loop_goes_around_once(engine):
     # 答えると起票に戻り、ready になる。マージされると、蒸留エージェントが答えをルールとして提案する
     engine.resolve("I1", {"I1-1": "OAuth"})
     run_until(engine, lambda: engine.decisions.proposals() != [])
-    assert engine.decisions.proposals() == [{"id": "P001", "kind": "add", "rule": "auth: OAuth", "decision": "I1-1"}]
+    assert engine.decisions.proposals() == [{"id": "P001", "kind": "add", "rule": "auth: OAuth", "decision": "I1-1", "scopes": []}]
 
     # 実行：配車され、実装、レビューを経て、マージのアダプタに頼んでマージ先に入る
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
@@ -575,8 +575,8 @@ def test_distill_reads_the_report_and_proposes_retiring_unused_rules(engine):
 
 def test_jobs_get_only_the_rules_in_their_scope(engine):
     engine.decisions.add("shared")
-    engine.decisions.add("for implement", scope="implement")
-    engine.decisions.add("for review", scope="review")
+    engine.decisions.add("for implement", scopes=["implement"])
+    engine.decisions.add("for review", scopes=["review"])
     engine.create("one")
     run_until(engine, lambda: state(engine, "I1") == State.DONE)
 
@@ -595,13 +595,16 @@ def test_jobs_get_only_the_rules_in_their_scope(engine):
     assert [r.id for r in engine._rules_for(Role.DISTILL, task)] == ["R001", "R002", "R003"]
 
 
-def test_distill_proposes_rules_with_a_scope(engine):
-    result = parse(Role.DISTILL, {"rules": [{"rule": "x", "scope": "implement"}, {"rule": "y"}]})
-    assert [(r["rule"], r["scope"]) for r in result.rules] == [("x", "implement"), ("y", "")]
-    with pytest.raises(ResultError, match="scope"):
-        parse(Role.DISTILL, {"rules": [{"rule": "x", "scope": "src/algr"}]})
-    proposal_id = engine.decisions.propose("x", "I1-1", scope="implement")
-    assert engine.decisions.proposals()[0]["scope"] == "implement"
+def test_distill_proposes_rules_with_scopes(engine):
+    result = parse(Role.DISTILL, {"rules": [{"rule": "x", "scopes": ["implement", "review"]}, {"rule": "y"}]})
+    assert [(r["rule"], r["scopes"]) for r in result.rules] == [("x", ["implement", "review"]), ("y", [])]
+    for bad in (["src/algr"], "implement", [""]):
+        with pytest.raises(ResultError, match="scopes"):
+            parse(Role.DISTILL, {"rules": [{"rule": "x", "scopes": bad}]})
+    proposal_id = engine.decisions.propose("x", "I1-1", scopes=["implement", "review"])
+    engine.decisions.propose("y", "I1-2")
+    assert [p["scopes"] for p in engine.decisions.proposals()] == [["implement", "review"], []]
     rule_id = engine.decisions.accept(proposal_id)
-    assert engine.decisions.rules(scope="review") == []
-    assert [r.id for r in engine.decisions.rules(scope="implement")] == [rule_id]
+    assert engine.decisions.rules(scope="intake") == []
+    assert [r.id for r in engine.decisions.rules(scope="review")] == [rule_id]
+    assert engine.decisions.rules()[0].scopes == ("implement", "review")

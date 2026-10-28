@@ -507,7 +507,7 @@ class Engine:
             self._review_done(task, result)
         elif isinstance(result, DistillResult):
             # 同じ提案は二重に出ないので、ぶつかって受け取り直しても ID は変わらない
-            proposals = [self.decisions.propose(r["rule"], source=r["source"], scope=r["scope"]) for r in result.rules]
+            proposals = [self.decisions.propose(r["rule"], source=r["source"], scopes=r["scopes"]) for r in result.rules]
             proposals += [self.decisions.propose_retire(r["rule_id"], r["reason"], source=r["source"]) for r in result.retire]
             self.tasks.save(task)
             return proposals

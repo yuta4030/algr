@@ -109,6 +109,7 @@ class ExecutorAdapter(Protocol):
 class Rule:
     id: str
     text: str
+    scopes: tuple[str, ...] = ()  # ルールの範囲（役の名前）。空なら範囲なし（どの範囲にも当たる）
 
 
 # 判断ストアの report() が返すキー。蒸留に渡すのはこれだけ（日ごとの数などは渡さない）
@@ -138,8 +139,8 @@ class DecisionStore(Protocol):
 
     def decide(self, decision: str, outcome: str, actual: str, predicted: str | None = None) -> None: ...
 
-    def propose(self, rule: str, source: str, scope: str = "") -> str:
-        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。scope はルールの範囲で、空なら範囲なし。メタプログラマーの accept をもってルールになる。同じ提案は二重に出さない。"""
+    def propose(self, rule: str, source: str, scopes: list[str] | None = None) -> str:
+        """1 行ルールの追加を提案し、提案の ID を返す。source は元になった決断 ID で、無ければ空。scopes はルールの範囲で、空なら範囲なし。メタプログラマーの accept をもってルールになる。同じ提案は二重に出さない。"""
         ...
 
     def propose_retire(self, rule_id: str, reason: str, source: str) -> str:
@@ -149,8 +150,8 @@ class DecisionStore(Protocol):
     def proposals(self) -> list[dict[str, str]]:
         """まだ受け入れも却下もされていない提案。
 
-        足す提案は {"id", "kind": "add", "rule", "decision", "scope"?}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
-        decision は propose / propose_retire の source に渡した決断 ID。report の候補から出した提案では空。
+        足す提案は {"id", "kind": "add", "rule", "decision", "scopes"}、外す提案は {"id", "kind": "retire", "rule_id", "reason", "decision"}。
+        decision は propose / propose_retire の source に渡した決断 ID。report の候補から出した提案では空。scopes は propose に渡した範囲で、範囲なしなら空。
         """
         ...
 

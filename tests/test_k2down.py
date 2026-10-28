@@ -79,16 +79,19 @@ def test_report_keeps_only_what_distill_needs(store):
     assert store.proposals()[0]["decision"] == ""
 
 
-def test_rules_and_proposals_carry_a_scope(store):
-    store.propose("db: sqlite", "I1-3", scope="implement")
+def test_rules_and_proposals_carry_scopes(store):
+    store.propose("db: sqlite", "I1-3", scopes=["implement", "review"])
     store.propose("auth: OAuth", "I1-1")
+    assert calls(store)[0] == ["propose", "add", "db: sqlite", "--decision", "I1-3", "--scope", "implement", "--scope", "review", "--json"]
+    # k2down の scopes をそのまま返し、範囲の無い提案には空の配列を補う
+    assert [p["scopes"] for p in store.proposals()] == [["implement", "review"], []]
     store.accept("P-001")
     store.accept("P-002")
-    assert calls(store)[0] == ["propose", "add", "db: sqlite", "--decision", "I1-3", "--scope", "implement", "--json"]
+    assert [r.scopes for r in store.rules()] == [("implement", "review"), ()]
     # 範囲を渡すと、k2down がその範囲のルールと範囲の無いルールを返す
     assert [r.id for r in store.rules(scope="implement")] == ["R001", "R002"]
     assert calls(store)[-1] == ["list", "--json", "--scope", "implement"]
-    assert [r.id for r in store.rules(scope="review")] == ["R002"]
+    assert [r.id for r in store.rules(scope="intake")] == ["R002"]
     assert [r.id for r in store.rules()] == ["R001", "R002"]
 
 

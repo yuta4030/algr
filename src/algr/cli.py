@@ -110,7 +110,7 @@ def _proposal_text(p: dict[str, str]) -> str:
     origin = p["decision"] or "report"
     if p["kind"] == "retire":
         return f"{p['id']} retire {p['rule_id']}: {p['reason']} (from {origin})"
-    scope = f" [{p['scope']}]" if p.get("scope") else ""
+    scope = f" [{', '.join(p['scopes'])}]" if p.get("scopes") else ""
     return f"{p['id']} {p['rule']}{scope} (from {origin})"
 
 
@@ -267,7 +267,7 @@ def run(args: argparse.Namespace) -> Any:
         engine.decisions.reject_proposal(args.proposal_id)
         return {"proposals": engine.decisions.proposals()}
     if args.command == "rules":
-        return {"rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]}
+        return {"rules": [{"id": r.id, "text": r.text, "scopes": list(r.scopes)} for r in engine.decisions.rules()]}
     raise AssertionError(args.command)
 
 
@@ -291,7 +291,7 @@ def _to_text(value: Any) -> str:
     if "proposals" in value:
         return "\n".join(_proposal_text(p) for p in value["proposals"])
     if "rules" in value:
-        return "\n".join(f"{r['id']} {r['text']}" for r in value["rules"])
+        return "\n".join(f"{r['id']} {r['text']}" + (f" [{', '.join(r['scopes'])}]" if r.get("scopes") else "") for r in value["rules"])
     if "created" in value:
         return f"created {value['created']}"
     return json.dumps(value, ensure_ascii=False, indent=2)

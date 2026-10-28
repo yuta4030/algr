@@ -148,7 +148,7 @@ def snapshot(engine: Engine) -> dict[str, Any]:
         ],
         "events": events[-50:],
         "stats": stats.summarize(records),
-        "rules": [{"id": r.id, "text": r.text} for r in engine.decisions.rules()],
+        "rules": [{"id": r.id, "text": r.text, "scopes": list(r.scopes)} for r in engine.decisions.rules()],
         "proposals": proposals,
         "distills": distills(records, tasks, proposals)[:20],
     }
@@ -272,7 +272,7 @@ def jobs(records: list[dict[str, Any]], tasks: list[Task]) -> list[dict[str, Any
 def history(engine: Engine) -> dict[str, Any]:
     records = stats.load(engine.event_log) if engine.event_log else []
     tasks = engine.tasks.list()
-    rules = [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]
+    rules = [{"id": r.id, "text": r.text, "scopes": list(r.scopes)} for r in engine.decisions.rules()]
     return {
         "now": datetime.now(UTC).isoformat(timespec="seconds"),
         "trend": trend(records),
@@ -301,7 +301,7 @@ def review(engine: Engine, since: datetime | None = None) -> dict[str, Any]:
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=UTC)
     since = min(since or now - timedelta(days=7), now)
-    rules = [{"id": r.id, "text": r.text} for r in engine.decisions.rules()]
+    rules = [{"id": r.id, "text": r.text, "scopes": list(r.scopes)} for r in engine.decisions.rules()]
     proposals = engine.decisions.proposals()
     usage = rule_usage(tasks, rules, proposals)
     runs = distills(records, tasks, proposals)
