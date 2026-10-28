@@ -446,3 +446,9 @@
 {"ts": "2026-10-28T15:26:08+09:00", "event": "decided", "decision": "I21-6", "predicted": "失敗するたびに distill_failures を 1 増やし、_wanted は distill_failures <= max_distill のときだけ蒸留を出す（max_lost と同じく、上限の回数まで出し直す）。新しいフラグは足さない", "actual": "失敗するたびに distill_failures を 1 増やし、_wanted は distill_failures <= max_distill のときだけ蒸留を出す（max_lost と同じく、上限の回数まで出し直す）。新しいフラグは足さない", "outcome": "hit"}
 {"ts": "2026-10-28T15:26:08+09:00", "event": "decided", "decision": "I21-7", "predicted": "README の flow の設定例と LOST の説明、algr init のひな形（cli.py）に max_distill を足す", "actual": "README の flow の設定例と LOST の説明、algr init のひな形（cli.py）に max_distill を足す", "outcome": "hit"}
 {"ts": "2026-10-28T15:26:08+09:00", "event": "decided", "decision": "I21-8", "predicted": "読めない結果を返した蒸留が答えを残したまま出し直され、成功したら to_distill が空になるテストと、上限を超えたら止まって通知するテストを tests/test_loop.py に足す。結果を差し替える処理は break_distill にまとめ、既存のテストでも使う", "actual": "読めない結果を返した蒸留が答えを残したまま出し直され、成功したら to_distill が空になるテストと、上限を超えたら止まって通知するテストを tests/test_loop.py に足す。結果を差し替える処理は break_distill にまとめ、既存のテストでも使う", "outcome": "hit"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "accepted", "proposal": "P-vz03d"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "added", "rule_id": "R-6n5za", "decision": "I19-1", "proposal": "P-vz03d"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "accepted", "proposal": "P-mskfe"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "retired", "rule_id": "R-xe2we", "proposal": "P-mskfe"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "accepted", "proposal": "P-rw42m"}
+{"ts": "2026-10-28T15:48:19+09:00", "event": "added", "rule_id": "R-jknxe", "decision": "I20-1", "proposal": "P-rw42m"}

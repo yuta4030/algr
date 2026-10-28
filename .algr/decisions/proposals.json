@@ -1,27 +1,4 @@
 {
-  "proposals": [
-    {
-      "decision": "I19-1",
-      "id": "P-vz03d",
-      "kind": "add",
-      "rule": "出力・イベント・アダプタ IF の形を変えたり項目を足したりしたら、README の表も直す。足す項目には既定値を持たせる"
-    },
-    {
-      "decision": "I19-1",
-      "id": "P-mskfe",
-      "kind": "retire",
-      "reason": "I19-1 でアダプタ IF の戻り値とフェイクの保存の形を scopes（配列）に変えると決まり（R008 による）、「形は変えず足すだけにする」とぶつかる。既定値と README の部分だけを残して言い直す（判断 13 件で一度も当たっていない）",
-      "rule_id": "R-xe2we"
-    },
-    {
-      "decision": "I20-1",
-      "id": "P-rw42m",
-      "kind": "add",
-      "rule": "フローの回数の上限は、Task の回数の項目（既定 0、reopen で 0 に戻す）と設定の flow.max_*（既定値つき）を組にして持ち、reworks と flow.max_rework と同じ形にそろえる",
-      "scopes": [
-        "implement"
-      ]
-    }
-  ],
+  "proposals": [],
   "version": 1
 }
