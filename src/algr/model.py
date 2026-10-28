@@ -83,6 +83,7 @@ class Task:
     pr: str | None = None
     feedback: list[str] = field(default_factory=list)  # レビューと PJ の修正依頼。次の実装に渡す
     reworks: int = 0  # レビューから実装に戻した回数。上限を超えたら failed にする（PJ の修正依頼は数えない）
+    lost: int = 0  # 消えたジョブを出し直した回数。役を問わずタスク全体で数え、上限を超えたら failed にする
     seq: int = 0  # 決断 ID の採番。未決事項と判断で共有し、消しても番号は使い回さない
     jobs: dict[str, str] = field(default_factory=dict)  # 役 → 走っているジョブの ID
     runs: int = 0  # ジョブの採番。やり直しても同じ ID のジョブにならないようにする
