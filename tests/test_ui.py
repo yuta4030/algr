@@ -90,6 +90,7 @@ def test_history_counts_transitions_rules_and_jobs(gated):
 
     rules = h["rules"]
     assert [(r["id"], [u["id"] for u in r["uses"]]) for r in rules["rules"]] == [("R001", ["I1-1"])]
+    assert rules["rules"][0]["uses"][0] | {"answer": None} == {"task_id": "I1", "id": "I1-1", "text": "How?", "answer": None}  # どの判断で使われたかを文で辿れる
     assert [(c["topic"], c["human"]) for c in rules["candidates"]] == [("db", 1)]
     assert rules["proposals"] == [{"id": "P001", "kind": "add", "rule": "db: sqlite", "decision": "I2-1", "scopes": [], "question": {"text": "Where?", "answer": "sqlite"}}]
 

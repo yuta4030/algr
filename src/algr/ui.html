@@ -189,9 +189,17 @@ section.gate { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; b
 .kind { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 1px 8px; background: var(--add-bg); color: var(--add-ink); }
 .kind.retire { background: var(--drop-bg); color: var(--drop-ink); }
 .prest { display: grid; grid-template-columns: 64px 52px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; margin-bottom: 8px; cursor: pointer; }
-.mrule { display: grid; grid-template-columns: 64px minmax(0, 1fr) 110px; gap: 8px; align-items: center; padding: 5px 0; font-size: 13px; }
-.mrule > .mono, .prest > .mono { font-size: 12px; white-space: nowrap; }
-.mrule.unused { color: var(--mute); } .mrule .warn { color: var(--warn); }
+.prest > .mono { font-size: 12px; white-space: nowrap; }
+.msum { display: block; font-size: 13px; color: var(--agent); }
+/* ルール：1 本ずつ。文は長いので横に並べず、数と範囲は文の下に置く */
+.rcard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.rcard.unused { border-style: dashed; }
+.rcard .text { font-size: 15px; line-height: 1.7; max-width: 46em; }
+.rcard .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.rcard .meta b { color: var(--ink); font-weight: 600; } .rcard .meta .warn b, .rcard .meta .warn { color: var(--warn); }
+.rcard .scope { font-size: 12px; border-radius: 6px; padding: 1px 8px; background: var(--track); color: var(--ink); }
+.rcard details summary { cursor: pointer; font-size: 12px; color: var(--mute); }
+.rcard details .ev { margin-top: 6px; grid-template-columns: 90px minmax(0, 1fr); }
 .mcand { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; }
 .mnums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; margin-bottom: 8px; }
 .mnums div { background: var(--bg); border-radius: 8px; padding: 8px 4px; } .mnums b { display: block; font-size: 20px; }
@@ -289,7 +297,7 @@ main.page { display: block; }
   .row { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "id title age" ". steps who"; row-gap: 6px; }
   .row > .id { grid-area: id; } .row > .title { grid-area: title; } .row > .steps { grid-area: steps; } .row > .who { grid-area: who; } .row > .age { grid-area: age; }
   .row.head { display: none; }
-  .grid2, .mgrid, .qblock, .ev { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .mgrid, .qblock, .ev, .rcard details .ev { grid-template-columns: minmax(0, 1fr); }
   .ask { padding: 14px; }
   .lede { display: none; }
   nav.mode a { padding: 0 10px; font-size: 13px; gap: 6px; }
@@ -328,12 +336,13 @@ main.page { display: block; }
   <div class="mgrid">
     <div><div class="shead"><h2 class="big">決めること</h2><span class="mute" id="m-pos"></span></div><div id="m-card"></div><div id="m-rest"></div></div>
     <div>
-      <section><h2>ルールの効き <span class="mute" style="font-weight:400">使われた回数</span></h2><div id="m-rules"></div></section>
+      <section><h2>ルールの効き</h2><div id="m-rules"></div></section>
       <section><h2>まだルールでない論点</h2><div id="m-cands"></div></section>
       <section><h2>蒸留エージェント</h2><div id="m-distill"></div></section>
     </div>
   </div>
 </main>
+<main class="view page" id="view-rules" hidden><section><div class="filters"><div class="seg" id="r-filter"></div><span class="mute" id="r-n"></span></div><div id="rules"></div></section></main>
 <main class="view page" id="view-trend" hidden><div class="grid2" id="trend"></div></main>
 <main class="view page" id="view-flow" hidden><section class="flow"><h2>遷移の回数と滞在時間（中央値）</h2><div id="flow"></div></section></main>
 <main class="view page" id="view-jobs" hidden><section><div class="filters"><div class="seg" id="j-range"></div><div class="legend" id="j-legend" style="margin:0"></div></div><div id="jobs"></div></section></main>
@@ -681,10 +690,10 @@ function renderMeta() {
   $("m-card").innerHTML = p ? proposalCard(p) : `<div class="pcard"><div class="clear"><span class="mark">✓</span>決めることはありません</div></div>`;
   $("m-rest").innerHTML = ps.map((x, i) => (i === pi ? "" : `<div class="prest" data-pi="${i}"><span class="mono mute">${x.id}</span><span class="kind ${x.kind}">${x.kind === "retire" ? "外す" : "足す"}</span><span>${esc(proposalText(x))}</span></div>`)).join("");
 
-  // ルールの効き・まだルールでない論点
-  const rules = r.rules.slice().sort((a, b) => b.uses.length - a.uses.length), max = Math.max(1, ...rules.map((x) => x.uses.length));
-  $("m-rules").innerHTML = rules.map((x) => `<div class="mrule ${x.uses.length ? "" : "unused"}"><span class="mono mute">${x.id}</span><span>${esc(x.text + scopeText(x))}</span>
-    <span class="use ${x.report?.rejected ? "warn" : ""}">${x.uses.length ? `<i class="bar" style="width:${(x.uses.length / max) * 50}px"></i>${x.uses.length}` : "使われていない"}${x.report?.rejected ? ` · 異議 ${x.report.rejected}` : ""}</span></div>`).join("") || `<div class="empty">ルールはまだありません</div>`;
+  // ルールの効き（要約。1 本ずつはルールのページで読む）・まだルールでない論点
+  const unused = r.rules.filter((x) => !x.uses.length).length, doubted = r.rules.filter(doubtful).length;
+  $("m-rules").innerHTML = r.rules.length ? `<div class="mnums"><div><b>${r.rules.length}</b><span>ルール</span></div><div><b>${unused}</b><span>使われていない</span></div><div><b>${doubted}</b><span>外れ・異議</span></div></div>
+    <a class="msum" href="#rules">ルールを 1 本ずつ読む →</a>` : `<div class="empty">ルールはまだありません</div>`;
   $("m-cands").innerHTML = r.candidates.map((c) => `<div class="mcand"><span>${esc(c.topic || "（論点なし）")}</span><span class="${c.agent ? "" : "mute"}" ${c.agent ? 'style="color:var(--bad)"' : ""}>${[c.human ? `人が ${c.human} 回` : "", c.agent ? `根拠なしで ${c.agent} 回` : ""].filter(Boolean).join(" · ")}</span></div>`).join("") || `<div class="empty">なし</div>`;
 
   // 蒸留エージェント：期間の数と、失敗・待ち
@@ -717,12 +726,41 @@ function proposalCard(p) {
   </article>`;
 }
 
+// --- メタプログラマー：ルールを 1 本ずつ読んで、直すか外すかを決める ------------------
+const doubtful = (x) => x.report && x.report.miss + x.report.rejected > 0;
+const RULE_FILTERS = { all: ["すべて", () => true], unused: ["使われていない", (x) => !x.uses.length], doubtful: ["外れ・異議あり", doubtful] };
+let ruleFilter = "all";
+function renderRules() {
+  const r = review;
+  $("r-filter").innerHTML = Object.entries(RULE_FILTERS).map(([k, [label, f]]) => `<button class="${k === ruleFilter ? "on" : ""}" data-rfilter="${k}">${label} ${r.rules.filter(f).length}</button>`).join("");
+  const rules = r.rules.filter(RULE_FILTERS[ruleFilter][1]).sort((a, b) => b.uses.length - a.uses.length);
+  const retiring = new Map(r.proposals.filter((p) => p.kind === "retire").map((p) => [p.rule_id, p]));
+  $("r-n").textContent = "使われた回数の多い順";
+  $("rules").innerHTML = rules.map((x) => {
+    const rep = x.report, p = retiring.get(x.id);
+    const nums = [`使われた <b>${x.uses.length}</b> 回`,
+      rep ? `report：当たり <b>${rep.hit}</b> · <span class="${rep.miss ? "warn" : ""}">外れ <b>${rep.miss}</b></span> · <span class="${rep.rejected ? "warn" : ""}">異議 <b>${rep.rejected}</b></span>` : "report にない"];
+    const uses = x.uses.map((u) => `<div class="ev"><span class="mono mute">${esc(u.id)}</span><div>${u.text ? `<span class="mute">${esc(u.text)}</span>` : ""}${u.answer ? `<span class="a">${esc(u.answer)}</span>` : ""}</div></div>`).join("");
+    return `<article class="rcard ${x.uses.length ? "" : "unused"}" id="rule-${x.id}">
+      <div class="meta"><span class="mono">${x.id}</span>${(x.scopes || []).map((s) => `<span class="scope">${esc(s)}</span>`).join("")}${p ? `<span class="kind retire">外す提案 ${p.id}</span>` : ""}</div>
+      <div class="text">${esc(x.text)}</div>
+      <div class="meta">${nums.map((n) => `<span>${n}</span>`).join("")}</div>
+      ${x.uses.length ? `<details><summary>使われた判断 ${x.uses.length}（${[...new Set(x.uses.map((u) => u.task_id))].join(", ")}）</summary>${uses}</details>` : ""}
+    </article>`;
+  }).join("") || `<div class="empty">${r.rules.length ? "当てはまるルールはありません" : "ルールはまだありません"}</div>`;
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-rfilter]");
+  if (b) { ruleFilter = b.dataset.rfilter; renderRules(); }
+});
+
 async function loadReview() {
-  if (view !== "meta") return;
+  if (view !== "meta" && view !== "rules") return;
   const since = reviewedAt();
   try {
     review = await (await fetch(`/api/review${since ? `?since=${encodeURIComponent(since)}` : ""}`, { cache: "no-store" })).json();
-    if (data) renderMeta();
+    if (view === "rules") renderRules();
+    else if (data) renderMeta();
   } catch { $("live").style.background = "var(--bad)"; }
 }
 document.addEventListener("click", (ev) => {
@@ -823,7 +861,7 @@ async function loadHelp() {
 
 const PAGES = {
   client: [["now", "いま"], ["help", "ヘルプ"]],
-  meta: [["meta", "見直し"], ["trend", "推移"], ["flow", "フロー"], ["jobs", "ジョブ"], ["help", "ヘルプ"]],
+  meta: [["meta", "見直し"], ["rules", "ルール"], ["trend", "推移"], ["flow", "フロー"], ["jobs", "ジョブ"], ["help", "ヘルプ"]],
 };
 const LEDE = { client: "いまの仕事 — 何を大事にするかに答える", meta: "ルールを育てる — どこまで任せてよいかを決める" };
 let mode = "client";
@@ -839,6 +877,7 @@ function setMode(m) {
 function renderView() {
   if (view === "help") return loadHelp();
   if (view === "meta") return review && data && renderMeta();
+  if (view === "rules") return review && renderRules();
   if (view === "now" || !hist) return;
   ({ trend: renderTrend, flow: renderFlow, jobs: renderJobs })[view]();
 }
@@ -847,13 +886,12 @@ document.addEventListener("click", (ev) => {
   if (b) { range = b.dataset.range; renderJobs(); }
 });
 async function loadHistory() {
-  if (["now", "help", "meta"].includes(view)) return;
+  if (["now", "help", "meta", "rules"].includes(view)) return;
   try { hist = await (await fetch("/api/history", { cache: "no-store" })).json(); renderView(); } catch { $("live").style.background = "var(--bad)"; }
 }
 function route() {
   tip(null);
   view = (location.hash.slice(1) || "now");
-  if (view === "rules") view = "meta";  // 以前のルールのページは見直しに入れた
   if (!$(`view-${view}`)) view = "now";
   let saved = null;
   try { saved = localStorage.getItem("algr.mode"); } catch {}

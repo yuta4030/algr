@@ -234,14 +234,14 @@ def rule_usage(tasks: list[Task], rules: list[dict[str, str]], proposals: list[d
         for q in t.questions:
             questions[q.id] = {"text": q.text, "answer": q.answer}
             for rid in q.rule_ids:
-                used.setdefault(rid, []).append({"task_id": t.id, "id": q.id})
+                used.setdefault(rid, []).append({"task_id": t.id, "id": q.id, "text": q.text, "answer": q.answer})
             if q.by == "human":
                 topic = topics.setdefault(q.topic, {"topic": q.topic, "human": 0, "agent": 0, "examples": []})
                 topic["human"] += 1
                 topic["examples"].append({"id": q.id, "text": q.text, "answer": q.answer, "by": "human"})
         for d in t.decisions:
             for rid in d.rule_ids:
-                used.setdefault(rid, []).append({"task_id": t.id, "id": d.id})
+                used.setdefault(rid, []).append({"task_id": t.id, "id": d.id, "text": d.text, "answer": d.answer})
             if t.decided_by(d) == "agent":
                 topic = topics.setdefault(d.topic, {"topic": d.topic, "human": 0, "agent": 0, "examples": []})
                 topic["agent"] += 1
