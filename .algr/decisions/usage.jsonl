@@ -145,3 +145,264 @@
 {"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-3", "predicted": "提案の記録はまだ決まっていない提案だけを持ち、決まった提案の履歴は usage.jsonl の proposed / accepted / declined のイベントだけに残す案にする", "actual": "提案の記録はまだ決まっていない提案だけを持ち、決まった提案の履歴は usage.jsonl の proposed / accepted / declined のイベントだけに残す案にする", "outcome": "hit"}
 {"ts": "2026-10-25T21:06:25+09:00", "event": "decided", "decision": "I8-4", "predicted": "移す前に accept か decline で空にし、移行のためのコードは持たない。DecisionStore の IF は変えない", "actual": "移す前に accept か decline で空にし、移行のためのコードは持たない。DecisionStore の IF は変えない", "outcome": "hit"}
 {"ts": "2026-10-25T21:06:26+09:00", "event": "decided", "decision": "I8-5", "predicted": "既存のコマンドは変えずに propose / proposals / accept / decline を足す案にする。I2 のノードの要望は『併せて出すもの』として分けて書き、まとめるかは人に決めてもらう", "actual": "既存のコマンドは変えずに propose / proposals / accept / decline を足す案にする。I2 のノードの要望は『併せて出すもの』として分けて書き、まとめるかは人に決めてもらう", "outcome": "hit"}
+{"ts": "2026-10-25T21:07:10+09:00", "event": "decided", "decision": "I3-21", "actual": "推奨どおり。CLI に algr distill \"<方針>\" [--topic] を足し、中で Engine.request_distill を呼ぶ。UI は提案の表示だけを合わせる。理由：人の操作は Engine のメソッドにまとめ、CLI はそれを呼ぶ入口にするだけにする（R014）。UI はいま閲覧だけなので、操作の入口は CLI から先に足す", "outcome": "none"}
+{"ts": "2026-10-25T21:07:10+09:00", "event": "decided", "decision": "I6-4", "actual": "I5 はマージして done にした。I6 はいまの main から実装し直す。depends は後から足す入口がまだない（I10 で扱う）ので足さない。理由：同じファイルに触るタスクは、先のタスクが done になってから実装する（R020）", "outcome": "none"}
+{"ts": "2026-10-25T21:07:11+09:00", "event": "decided", "decision": "I7-1", "actual": "2 案目。処理した提案を proposals.json から消さず、状態（accepted / declined）を付けて残す。理由：提案の保存はいずれ k2down に移す（R013。要望は I8 の文案をもとに人が k2down に出す）。それまではアダプタがいま持つ記録に項目を足すだけの、戻せる形で進める（R017）。消さずに残せば、提案 ID が使い回される問題も同時に止まる。event…", "outcome": "none"}
+{"ts": "2026-10-25T21:07:11+09:00", "event": "decided", "decision": "I7-2", "actual": "1 案目。測った数が algr stats に出たところで止める。周期のまとめ直しを入れるかは人が数を見て決め、要るなら別のタスクにする。理由：最適化や新しい仕組みは、先に測って要ると確かめてから入れる（R012、R019）", "outcome": "none"}
+{"ts": "2026-10-25T21:07:11+09:00", "event": "decided", "decision": "I9-1", "actual": "(a)。Task に失敗の理由の項目を足し、task.failed で埋めて reopen で消す。理由：状態の理由はタスクの状態と一緒に持つ。events.jsonl は観察用のログで置かない設定もあるので、表示もそこに頼らない（R003 の考えを表示にも広げる）。記録の形の変更は 1.0 前なので許す（R008）", "outcome": "none"}
+{"ts": "2026-10-25T21:09:11+09:00", "event": "applied", "rule_id": "R016", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-23"}
+{"ts": "2026-10-25T21:09:11+09:00", "event": "applied", "rule_id": "R007", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-23"}
+{"ts": "2026-10-25T21:09:11+09:00", "event": "applied", "rule_id": "R002", "problem": "方針タスクが実装・レビューに流れないようにする形", "decision": "I3-23"}
+{"ts": "2026-10-25T21:09:11+09:00", "event": "applied", "rule_id": "R007", "problem": "方針の人の決定の記録", "decision": "I3-25"}
+{"ts": "2026-10-25T21:09:11+09:00", "event": "applied", "rule_id": "R011", "problem": "方針の人の決定の記録", "decision": "I3-25"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R009", "problem": "外す提案の記録の形", "decision": "I3-27"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R007", "problem": "知らないルールを外す提案の扱い", "decision": "I3-29"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R007", "problem": "fake の RuleFile のルール ID の振り方", "decision": "I3-30"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R008", "problem": "fake の RuleFile のルール ID の振り方", "decision": "I3-30"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R015", "problem": "蒸留のプロンプトでの衝突の扱い", "decision": "I3-31"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R007", "problem": "蒸留のプロンプトでの衝突の扱い", "decision": "I3-31"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R006", "problem": "UI の提案の表示", "decision": "I3-33"}
+{"ts": "2026-10-25T21:09:12+09:00", "event": "applied", "rule_id": "R007", "problem": "統合ブランチへの追従", "decision": "I3-35"}
+{"ts": "2026-10-25T21:13:52+09:00", "event": "applied", "rule_id": "R022", "problem": "turns の既定値", "decision": "I6-8"}
+{"ts": "2026-10-25T21:13:53+09:00", "event": "applied", "rule_id": "R018", "problem": "claude の出力から写す項目", "decision": "I6-9"}
+{"ts": "2026-10-25T21:13:53+09:00", "event": "applied", "rule_id": "R007", "problem": "フェイク実行アダプタでの受け渡し", "decision": "I6-10"}
+{"ts": "2026-10-25T21:13:53+09:00", "event": "applied", "rule_id": "R019", "problem": "タスクに足し上げるか", "decision": "I6-11"}
+{"ts": "2026-10-25T21:16:10+09:00", "event": "escalated", "decision": "I7-3", "problem": "How should `algr stats` read proposals that have already been handled? Today `stats.py` only reads events.jsonl. The only way to read proposals is `DecisionStore.proposals()` in `src/algr/adapters/__…", "reason": "no_match"}
+{"ts": "2026-10-25T21:19:25+09:00", "event": "applied", "rule_id": "R007", "problem": "claude が終了コード 0 以外で終わったときの扱い", "decision": "I9-3"}
+{"ts": "2026-10-25T21:19:25+09:00", "event": "applied", "rule_id": "R007", "problem": "task.failed の message にエージェントの出力を届ける経路", "decision": "I9-4"}
+{"ts": "2026-10-25T21:19:25+09:00", "event": "applied", "rule_id": "R006", "problem": "UI の失敗の表示の出どころ", "decision": "I9-5"}
+{"ts": "2026-10-25T21:19:25+09:00", "event": "applied", "rule_id": "R001", "problem": "task.failed のイベントのペイロード", "decision": "I9-6"}
+{"ts": "2026-10-25T21:23:55+09:00", "event": "applied", "rule_id": "R007", "problem": "Characters the console can't encode", "decision": "I13-1"}
+{"ts": "2026-10-25T21:23:55+09:00", "event": "applied", "rule_id": "R002", "problem": "Where the fix goes", "decision": "I13-2"}
+{"ts": "2026-10-25T21:23:55+09:00", "event": "applied", "rule_id": "R007", "problem": "Test", "decision": "I13-3"}
+{"ts": "2026-10-25T21:25:30+09:00", "event": "escalated", "decision": "I14-1", "problem": "取り下げを新しい状態にするか、既存の状態（done / failed）に理由を付けて表すか", "reason": "no_match"}
+{"ts": "2026-10-25T21:25:30+09:00", "event": "escalated", "decision": "I14-2", "problem": "取り下げの入口をどうするか。人が未決事項に答えると取り下げになる形にするか、未決事項とは別の人の操作（Engine.withdraw と CLI の algr withdraw、UI のボタン）にするか。どちらでも R014 に沿って Engine のメソッドにまとめる", "reason": "no_match"}
+{"ts": "2026-10-25T21:25:30+09:00", "event": "escalated", "decision": "I14-3", "problem": "取り下げはクライアントとメタプログラマーのどちらの立場の操作か（CLAUDE.md では、人の操作を足すときに先に立場を決める）", "reason": "no_match"}
+{"ts": "2026-10-25T21:25:30+09:00", "event": "escalated", "decision": "I14-4", "problem": "どの状態から取り下げられるようにするか。いまジョブが動いている状態（intake、in-progress、review）から取り下げたとき、走っているジョブの結果をどう扱うか", "reason": "no_match"}
+{"ts": "2026-10-25T21:25:30+09:00", "event": "escalated", "decision": "I14-5", "problem": "取り下げたタスクを depends に持つタスクをどう扱うか（いまは依存先が done になるまで ready のまま待つので、何もしなければずっと止まる）", "reason": "no_match"}
+{"ts": "2026-10-25T21:25:31+09:00", "event": "escalated", "decision": "I14-6", "problem": "algr stats で取り下げたタスクをどう数えるか。tasks（分母）に含めるか、取り下げを人の介入（interventions）に数えるか、取り下げた件数を別の項目で出すか", "reason": "no_match"}
+{"ts": "2026-10-25T23:30:40+09:00", "event": "decided", "decision": "I13-1", "predicted": "At the start of cli.main, set sys.stdout and sys.stderr to errors=\"replace\" with reconfigure. The console's encoding stays as it is, so Japanese stays readable, and characters it can't show (like U+2…", "actual": "At the start of cli.main, set sys.stdout and sys.stderr to errors=\"replace\" with reconfigure. The console's encoding stays as it is, so Japanese stays readable, and characters it can't show (like U+2…", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:40+09:00", "event": "decided", "decision": "I13-2", "predicted": "Only in cli.py's main, which covers every output: the text output, --json, watch and the errors on stderr. agent.py and the adapters are not touched", "actual": "Only in cli.py's main, which covers every output: the text output, --json, watch and the errors on stderr. agent.py and the adapters are not touched", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:41+09:00", "event": "decided", "decision": "I13-3", "predicted": "Swap stdout for a cp932 stream, run algr new with a title containing U+2013, and check it exits 0 and prints the character as ?", "actual": "Swap stdout for a cp932 stream, run algr new with a title containing U+2013, and check it exits 0 and prints the character as ?", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:41+09:00", "event": "decided", "decision": "I10-1", "predicted": "Engine.depend(task_id, add=, remove=) にまとめ、CLI の algr depends はそれを呼ぶだけにする", "actual": "Engine.depend(task_id, add=, remove=) にまとめ、CLI の algr depends はそれを呼ぶだけにする", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:41+09:00", "event": "decided", "decision": "I10-2", "predicted": "状態遷移ではないのでイベントや状態を足さず、タスクの depends を保存するだけにする。配車は次の tick で新しい depends で判定される", "actual": "状態遷移ではないのでイベントや状態を足さず、タスクの depends を保存するだけにする。配車は次の tick で新しい depends で判定される", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:41+09:00", "event": "decided", "decision": "I10-3", "predicted": "algr depends TASK_ID --add ID --remove ID（どちらも複数回指定可）。足す・外すを分けて指定し、丸ごと置き換える形にはしない", "actual": "algr depends TASK_ID --add ID --remove ID（どちらも複数回指定可）。足す・外すを分けて指定し、丸ごと置き換える形にはしない", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:41+09:00", "event": "decided", "decision": "I10-4", "predicted": "足す依存先は実在すること（無ければ no such task）、外す依存先は今の depends にあること、自分自身を含めて依存をたどって自分に戻らないこと。循環は経路付きのエラーにする", "actual": "足す依存先は実在すること（無ければ no such task）、外す依存先は今の depends にあること、自分自身を含めて依存をたどって自分に戻らないこと。循環は経路付きのエラーにする", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:42+09:00", "event": "decided", "decision": "I10-5", "predicted": "状態で制限しない。配車の判定にしか使わないので、done のタスクを変えても害がない", "actual": "状態で制限しない。配車の判定にしか使わないので、done のタスクを変えても害がない", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:42+09:00", "event": "decided", "decision": "I10-6", "predicted": "足さない。UI はまだ操作を持たず CLI を添えるだけなので、今回は CLI と README のみ", "actual": "足さない。UI はまだ操作を持たず CLI を添えるだけなので、今回は CLI と README のみ", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:42+09:00", "event": "decided", "decision": "I10-7", "predicted": "人の役割の表でクライアントの操作（何をやるか・順序）に algr depends を足し、使い方と依存の節に追記する", "actual": "人の役割の表でクライアントの操作（何をやるか・順序）に algr depends を足し、使い方と依存の節に追記する", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:42+09:00", "event": "decided", "decision": "I6-8", "predicted": "RunStatus.turns の既定値を 0 にする。turns を返さないアダプタや結果でも壊れない", "actual": "RunStatus.turns の既定値を 0 にする。turns を返さないアダプタや結果でも壊れない", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:43+09:00", "event": "decided", "decision": "I6-9", "predicted": "claude の num_turns を写し、値の意味は変えない。項目名は I6-3 の答えに合わせて turns にする", "actual": "claude の num_turns を写し、値の意味は変えない。項目名は I6-3 の答えに合わせて turns にする", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:43+09:00", "event": "decided", "decision": "I6-10", "predicted": "fake.process は usage と同じやり方で結果から turns を外し、RunStatus.turns で返す", "actual": "fake.process は usage と同じやり方で結果から turns を外し、RunStatus.turns で返す", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:43+09:00", "event": "decided", "decision": "I6-11", "predicted": "Task には turns を足し上げず、stats と ui も変えない。指標に出すのは測ってから別のタスクでやる", "actual": "Task には turns を足し上げず、stats と ui も変えない。指標に出すのは測ってから別のタスクでやる", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:58+09:00", "event": "decided", "decision": "I9-3", "predicted": "標準出力の JSON を読めれば subtype・is_error・api_error_status・result・errors・stderr の末尾をメッセージに残す。読めなければ stderr（無ければ stdout）の末尾を残す", "actual": "標準出力の JSON を読めれば subtype・is_error・api_error_status・result・errors・stderr の末尾をメッセージに残す。読めなければ stderr（無ければ stdout）の末尾を残す", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:58+09:00", "event": "decided", "decision": "I9-4", "predicted": "LocalProcess.status の失敗の message に、ジョブの log の末尾 500 文字を『exit N: …』の形で添える。アダプタ IF は変えない", "actual": "LocalProcess.status の失敗の message に、ジョブの log の末尾 500 文字を『exit N: …』の形で添える。アダプタ IF は変えない", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:58+09:00", "event": "decided", "decision": "I9-5", "predicted": "失敗の理由は Task.failure から出す。段（どこで止まったか）は従来どおり events.jsonl の from から出す", "actual": "失敗の理由は Task.failure から出す。段（どこで止まったか）は従来どおり events.jsonl の from から出す", "outcome": "hit"}
+{"ts": "2026-10-25T23:30:58+09:00", "event": "decided", "decision": "I9-6", "predicted": "role と message のまま変えない（イベントの形は既存を変えない）", "actual": "role と message のまま変えない（イベントの形は既存を変えない）", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-23", "predicted": "タスクを最初から done で作る（task.created を出さず、イベントも出さない）。done には ROLE_FOR_STATE が無いので、蒸留以外のジョブは出ない。flow と状態は変えない。algr stats にも数えない", "actual": "タスクを最初から done で作る（task.created を出さず、イベントも出さない）。done には ROLE_FOR_STATE が無いので、蒸留以外のジョブは出ない。flow と状態は変えない。algr stats にも数えない", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-25", "predicted": "resolve と同じく decisions.decide(<決断 ID>, none, 方針) で判断ストアに 1 回だけ残す", "actual": "resolve と同じく decisions.decide(<決断 ID>, none, 方針) で判断ストアに 1 回だけ残す", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-27", "predicted": "proposals の要素は、足す提案が {id, rule, source}、外す提案が {id, rule_id, reason, source}。ルール ID は rule とは別の項目に置く", "actual": "proposals の要素は、足す提案が {id, rule, source}、外す提案が {id, rule_id, reason, source}。ルール ID は rule とは別の項目に置く", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-29", "predicted": "結果の形の誤り（ResultError）として蒸留のジョブを失敗にし、人に知らせる。提案は積まない", "actual": "結果の形の誤り（ResultError）として蒸留のジョブを失敗にし、人に知らせる。提案は積まない", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-30", "predicted": "rules.json に issued（振った数）を持ち、外したルールの番号を使い回さない（k2down と同じ）", "actual": "rules.json に issued（振った数）を持ち、外したルールの番号を使い回さない（k2down と同じ）", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-31", "predicted": "既存のルールと同じ趣旨なら提案しない。ぶつかるなら、新しいルールを rules に、古いルールを retire に、理由を添えて出す", "actual": "既存のルールと同じ趣旨なら提案しない。ぶつかるなら、新しいルールを rules に、古いルールを retire に、理由を添えて出す", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-33", "predicted": "外す提案は「<ルール ID> を外す：<理由>」と出す。ほかの見せ方は今のまま", "actual": "外す提案は「<ルール ID> を外す：<理由>」と出す。ほかの見せ方は今のまま", "outcome": "hit"}
+{"ts": "2026-10-25T23:31:00+09:00", "event": "decided", "decision": "I3-35", "predicted": "やり直しでは I3-21 の答えが今の実装と同じだったのでコードは変えず、main（R017〜R022、I5、I8）を algr/I3 にマージして取り込んだ。衝突は無く、テストとリンタは通った", "actual": "やり直しでは I3-21 の答えが今の実装と同じだったのでコードは変えず、main（R017〜R022、I5、I8）を algr/I3 にマージして取り込んだ。衝突は無く、テストとリンタは通った", "outcome": "hit"}
+{"ts": "2026-10-26T00:40:05+09:00", "event": "decided", "decision": "I14-1", "actual": "新しい終わりの状態（withdrawn）を足す。理由：done にするとマージしたものと区別できず、failed にすると reopen 待ちに見える。取り下げは別の事実なので、状態で表す（R002）", "outcome": "none"}
+{"ts": "2026-10-26T00:40:05+09:00", "event": "decided", "decision": "I14-2", "actual": "未決事項とは別の操作にする（Engine.withdraw(task_id, reason) と algr withdraw、UI のボタン）", "outcome": "none"}
+{"ts": "2026-10-26T00:40:05+09:00", "event": "decided", "decision": "I14-3", "actual": "クライアント。何をやるかの判断なので new・answer の側", "outcome": "none"}
+{"ts": "2026-10-26T00:40:05+09:00", "event": "decided", "decision": "I14-4", "actual": "done 以外のすべての状態から取り下げられる。あとから届いたジョブの結果は捨てる", "outcome": "none"}
+{"ts": "2026-10-26T00:40:06+09:00", "event": "decided", "decision": "I14-5", "actual": "取り下げのときに置き換え先のタスク ID を指定でき、待っているタスクの depends をそれに付け替える。置き換え先が無ければ依存を外す", "outcome": "none"}
+{"ts": "2026-10-26T00:40:06+09:00", "event": "decided", "decision": "I14-6", "actual": "取り下げた件数を withdrawn として足す。tasks と率の分母からは外し、取り下げは人の介入に数えない", "outcome": "none"}
+{"ts": "2026-10-26T00:40:06+09:00", "event": "decided", "decision": "I7-3", "actual": "DecisionStore に新しいメソッド（例：proposal_history()）を足し、処理済みも含めた提案を status（pending / accepted / declined）付きで返す。proposals() は未処理だけのまま。stats はアダプタが持っているときだけ呼び、無ければ提案の数を出さない。理由：提案はいずれ k2down 側で持つ（要望済み）ので、そのときこの…", "outcome": "none"}
+{"ts": "2026-10-26T00:40:40+09:00", "event": "escalated", "decision": "I14-7", "problem": "取り下げたあと、蒸留のジョブをどうするか。蒸留は状態と関係なく to_distill から起動される（engine._wanted）。I14-4 の「あとから届いたジョブの結果は捨てる」を蒸留にも当てるか。当てると、取り下げたタスクで人が答えた方針がルールにならずに消える", "reason": "no_match"}
+{"ts": "2026-10-26T00:40:41+09:00", "event": "escalated", "decision": "I14-8", "problem": "withdrawn から戻せるようにするか。いまの reopen は failed からだけ受け付ける（flow.TRANSITIONS の task.reopened）。間違えて取り下げたときに戻す経路を用意するか", "reason": "no_match"}
+{"ts": "2026-10-26T00:40:52+09:00", "event": "decided", "decision": "I14-7", "actual": "蒸留は続ける。捨てるのは起票・実装・レビューのジョブの結果だけにし、取り下げたあとも to_distill の蒸留は起動し、結果も受け取る。理由：人が答えた方針はタスクを取り下げても有効で、ルールにならずに消えるのは損", "outcome": "none"}
+{"ts": "2026-10-26T00:40:53+09:00", "event": "decided", "decision": "I14-8", "actual": "戻さない。withdrawn は done と同じ終わりの状態にし、やり直すなら新しく起票する。理由：戻す経路を足すより、起票し直す方が簡単で、取り下げた記録も残る", "outcome": "none"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R022", "problem": "proposal_history を Protocol のメソッドにするか", "decision": "I7-6"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R007", "problem": "proposal_history を Protocol のメソッドにするか", "decision": "I7-6"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R019", "problem": "stats に出す提案の指標", "decision": "I7-8"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R021", "problem": "stats に出す提案の指標", "decision": "I7-8"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R007", "problem": "stats に出す提案の指標", "decision": "I7-8"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R011", "problem": "提案の論点の引き方", "decision": "I7-9"}
+{"ts": "2026-10-26T00:44:25+09:00", "event": "applied", "rule_id": "R007", "problem": "提案の論点の引き方", "decision": "I7-9"}
+{"ts": "2026-10-26T00:44:26+09:00", "event": "applied", "rule_id": "R007", "problem": "同じ提案かどうかの比べ方（冪等）", "decision": "I7-10"}
+{"ts": "2026-10-26T00:44:26+09:00", "event": "applied", "rule_id": "R008", "problem": "status を持たない既存の proposals.json の項目", "decision": "I7-11"}
+{"ts": "2026-10-26T00:44:26+09:00", "event": "applied", "rule_id": "R007", "problem": "status を持たない既存の proposals.json の項目", "decision": "I7-11"}
+{"ts": "2026-10-26T00:44:26+09:00", "event": "applied", "rule_id": "R001", "problem": "README", "decision": "I7-12"}
+{"ts": "2026-10-26T21:10:59+09:00", "event": "applied", "rule_id": "R001", "problem": "task.withdrawn のペイロードと既定の処理", "decision": "I14-15"}
+{"ts": "2026-10-26T21:10:59+09:00", "event": "applied", "rule_id": "R007", "problem": "task.withdrawn のペイロードと既定の処理", "decision": "I14-15"}
+{"ts": "2026-10-26T21:10:59+09:00", "event": "applied", "rule_id": "R006", "problem": "UI の見せ方", "decision": "I14-16"}
+{"ts": "2026-10-26T21:10:59+09:00", "event": "applied", "rule_id": "R007", "problem": "失敗の通知に添える待っているタスク", "decision": "I14-17"}
+{"ts": "2026-10-27T23:50:39+09:00", "event": "decided", "decision": "I11-1", "actual": "前提が古い。algr distill は I3 で入った（人の方針を蒸留に依頼する入口）。このタスクでは、答えるたびの即提案と algr distill で足りるかを、提案の重なりと重複の数で測るだけにする", "outcome": "none"}
+{"ts": "2026-10-27T23:50:39+09:00", "event": "decided", "decision": "I11-2", "actual": "数を測って結果に載せるところで止める。周期の蒸留を入れるかは人が決め、要るなら別のタスクで入れる", "outcome": "none"}
+{"ts": "2026-10-27T23:50:39+09:00", "event": "decided", "decision": "I11-3", "actual": "測ってから決める。このタスクでは周期の仕組みを作らない", "outcome": "none"}
+{"ts": "2026-10-27T23:50:40+09:00", "event": "decided", "decision": "I2-9", "actual": "k2down 0.4.0 で範囲が入った（add --scope、list --scope、scope コマンド。--scope を付けた list は、その範囲のルールと範囲の無いルールを返す）。これを使って進める。トークンはほとんど減らないと分かったので、狙いはトークンではなく、範囲外のルールを当てずに人に上げられるようにすること", "outcome": "none"}
+{"ts": "2026-10-27T23:51:30+09:00", "event": "escalated", "decision": "I11-4", "problem": "「重複」と「重なり」を何で数えるか。DecisionStore.propose（adapters/__init__.py）は同じ提案を二重に出さず同じ ID を返し、engine.poll は蒸留ジョブの終了の記録（events.jsonl の \"job\" 行）に提案 ID の一覧（proposals）を残す。このため完全一致の重複は「複数の蒸留ジョブが同じ提案 ID を返した回数」として機械的…", "reason": "no_match"}
+{"ts": "2026-10-27T23:51:30+09:00", "event": "escalated", "decision": "I11-5", "problem": "測った数をどこに載せるか（I11-2 の「結果に載せる」の置き場所）。stats.summarize に項目を足すと `algr stats` の出力（公開 IF）が増える。足すだけなら R001 の範囲だが README の表も直すことになる。重なりは文を読んで判断した数なので stats では出せず、文書に書くしかない。また受け入れ済み・却下済みの提案の文は判断ストア（k2down の ru…", "reason": "no_match"}
+{"ts": "2026-10-27T23:52:18+09:00", "event": "escalated", "decision": "I2-10", "problem": "判断ストアのアダプタ IF の変え方：adapters/__init__.py の DecisionStore.rules() は引数が無く、Rule は id と text だけを持つ。engine.py の _start_jobs が rules() を引いて agents.job_input にそのまま渡している。範囲で絞るには、(a) rules(scope) に引数を足してアダプタに絞…", "reason": "no_match"}
+{"ts": "2026-10-27T23:52:18+09:00", "event": "escalated", "decision": "I2-11", "problem": "提案に範囲を付ける経路：I2-5 は『蒸留が提案に範囲を含め、accept で確かめる』に任せられたが、DecisionStore.propose(rule, source) と k2down.py の propose（k2down propose add）には範囲を渡す口が無い。k2down 0.4.0 で入ったと分かっているのは add --scope、list --scope、scope …", "reason": "no_match"}
+{"ts": "2026-10-27T23:52:18+09:00", "event": "escalated", "decision": "I2-12", "problem": "範囲の照合のためにタスクの記録を変えるか：I2-2・I2-3 は任せる（R007）だが、触る領域で照合する場合は model.py の Task に範囲（例：scopes）を足し、起票の結果（agents.py の IntakeResult）から書くことになり、tasks の記録の形が変わる（安全網 1）。役だけで照合するなら、job_input に渡る role を k2down の list…", "reason": "no_match"}
+{"ts": "2026-10-27T23:52:18+09:00", "event": "escalated", "decision": "I2-13", "problem": "fake の RuleFile（adapters/fake.py）の rules.json の形：今は {\"rules\": [{\"id\", \"text\"}], \"proposals\": [...]}。範囲を持たせるには rules の各要素（と proposals の足す提案）に scope を足すことになり、保存した記録の形が変わる（安全網 1）。R008 により旧形式の読み込みは持たないが、…", "reason": "no_match"}
+{"ts": "2026-10-27T23:58:53+09:00", "event": "decided", "decision": "I11-4", "actual": "重複も重なりも数える。重複は events.jsonl から機械的に数え、重なりは実装エージェントが提案とルールの文を読み比べて一度だけ数える。理由：周期の蒸留が要るかを決めるのに効くのは、文の違う重なりの方。機械で数えられるものだけに絞ると、判断に要る数を落とす。文を読む判断はエージェントが行い、コアは判断しない", "outcome": "none"}
+{"ts": "2026-10-27T23:58:53+09:00", "event": "decided", "decision": "I11-5", "actual": "algr stats に重複の数（同じ提案 ID が返った回数）を足し、重なりは一度だけ測って docs/dogfooding.md の「分かったこと」に書く。理由：続けて見たい数のうち、ログから機械的に出せるものは stats に載せ、文を読んで判断した数は一度きりの調べとして文書に残す。stats の出力は項目を足すだけにし、README も直す（R001 と同じ考え）", "outcome": "none"}
+{"ts": "2026-10-27T23:59:11+09:00", "event": "decided", "decision": "I2-10", "actual": "(a) rules(scope=None) に引数を足し、アダプタが絞る。理由：範囲の意味（その範囲のルールと範囲の無いルールを返す）は判断ストアが持ち、コアは役を渡すだけにする（R013）。引数には既定値を持たせ、既存のアダプタを壊さない（R022 と同じ考え）", "outcome": "none"}
+{"ts": "2026-10-27T23:59:11+09:00", "event": "decided", "decision": "I2-11", "actual": "propose に scope の引数（既定値は空文字）を足し、k2down の propose add --scope に渡す。k2down 0.4.0 の propose add には --scope がある（手元で確かめた）ので、k2down への要望は要らない。理由：範囲はルールの一部なので、提案の時点で付け、メタプログラマーが accept で文と一緒に確かめる。accept のあとに…", "outcome": "none"}
+{"ts": "2026-10-27T23:59:12+09:00", "event": "decided", "decision": "I2-12", "actual": "役だけで照合し、Task の記録は変えない。理由：まず最小の形で入れ、役で足りないと記録から分かってから広げる。記録の形を変えるのは、要ると分かってからにする", "outcome": "none"}
+{"ts": "2026-10-27T23:59:12+09:00", "event": "decided", "decision": "I2-13", "actual": "rules と足す提案の要素に scope を足し、無ければ範囲なしとして読む。理由：フェイクも本物のアダプタと同じ振る舞いにし、範囲の絞り込みをテストで確かめられるようにする。scope の無い要素を既定値で範囲なしとして読めば、旧形式の読み込みを別に持たずに済む（R008、R022）", "outcome": "none"}
+{"ts": "2026-10-28T00:02:14+09:00", "event": "applied", "rule_id": "R001", "problem": "stats の出力の項目", "decision": "I11-9"}
+{"ts": "2026-10-28T00:02:14+09:00", "event": "applied", "rule_id": "R021", "problem": "数と重複を分けた項目にするか", "decision": "I11-10"}
+{"ts": "2026-10-28T00:02:14+09:00", "event": "applied", "rule_id": "R007", "problem": "方針のタスク（algr distill）の蒸留を数えるか", "decision": "I11-11"}
+{"ts": "2026-10-28T00:02:14+09:00", "event": "applied", "rule_id": "R007", "problem": "テストの置き場所と形", "decision": "I11-12"}
+{"ts": "2026-10-28T00:02:14+09:00", "event": "applied", "rule_id": "R007", "problem": "読み比べた提案の出どころ", "decision": "I11-13"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R007", "problem": "Scope axis and allowed values", "decision": "I2-18"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R007", "problem": "How rules without a scope are handled", "decision": "I2-19"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R007", "problem": "Rules passed to review and distill", "decision": "I2-20"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R022", "problem": "Keeping existing adapters working", "decision": "I2-21"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R007", "problem": "Prompt and documentation", "decision": "I2-22"}
+{"ts": "2026-10-28T00:07:54+09:00", "event": "applied", "rule_id": "R007", "problem": "Showing scope in algr proposals", "decision": "I2-23"}
+{"ts": "2026-10-28T00:19:42+09:00", "event": "decided", "decision": "I11-9", "predicted": "既存の項目は変えず、proposals（返った提案 ID の数）と duplicate_proposals（2 回目以降に返った同じ ID の数）の 2 項目を足し、README の algr stats の説明も直した", "actual": "既存の項目は変えず、proposals（返った提案 ID の数）と duplicate_proposals（2 回目以降に返った同じ ID の数）の 2 項目を足し、README の algr stats の説明も直した", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:42+09:00", "event": "decided", "decision": "I11-10", "predicted": "提案の数と重複の数は 1 つの辞書にまとめず、別々の整数の項目にした", "actual": "提案の数と重複の数は 1 つの辞書にまとめず、別々の整数の項目にした", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:42+09:00", "event": "decided", "decision": "I11-11", "predicted": "jobs_by_role と違ってイベントの出るタスクに絞らず、方針のタスクの蒸留も含めた。即提案と algr distill の両方を見るのがこのタスクの目的なので", "actual": "jobs_by_role と違ってイベントの出るタスクに絞らず、方針のタスクの蒸留も含めた。即提案と algr distill の両方を見るのがこのタスクの目的なので", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:43+09:00", "event": "decided", "decision": "I11-12", "predicted": "tests/test_loop.py に、手で作った記録で summarize を確かめるテストを 1 本足した", "actual": "tests/test_loop.py に、手で作った記録で summarize を確かめるテストを 1 本足した", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:43+09:00", "event": "decided", "decision": "I11-13", "predicted": "k2down の .algr/decisions/ には proposals.json が無く、決まっていない提案が無かったので、k2down に替える前の .algr/state/proposals.json の P001〜P005 を使った。そのことは文書に書いた。k2down report はこのジョブでは承認が要って走らせられず、declined_proposals（却下した提案）は読み…", "actual": "k2down の .algr/decisions/ には proposals.json が無く、決まっていない提案が無かったので、k2down に替える前の .algr/state/proposals.json の P001〜P005 を使った。そのことは文書に書いた。k2down report はこのジョブでは承認が要って走らせられず、declined_proposals（却下した提案）は読み…", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:46+09:00", "event": "decided", "decision": "I2-18", "predicted": "Scope is the role name (intake / implement / review / distill). The distill result is validated against Role values, and any other value fails the result. No scoping by area (files or modules) for no…", "actual": "Scope is the role name (intake / implement / review / distill). The distill result is validated against Role values, and any other value fails the result. No scoping by area (files or modules) for no…", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:46+09:00", "event": "decided", "decision": "I2-19", "predicted": "They count as having no scope and are passed to every role's jobs.", "actual": "They count as having no scope and are passed to every role's jobs.", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:47+09:00", "event": "decided", "decision": "I2-20", "predicted": "Review gets the rules in its own scope plus any rules cited in rule_ids of the task's decisions and questions, even from other scopes. Distill maintains the rules, so it gets every rule. This is Engi…", "actual": "Review gets the rules in its own scope plus any rules cited in rule_ids of the task's decisions and questions, even from other scopes. Distill maintains the rules, so it gets every rule. This is Engi…", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:47+09:00", "event": "decided", "decision": "I2-21", "predicted": "Both rules' scope and propose's scope have default values, so callers that don't pass a scope work as before.", "actual": "Both rules' scope and propose's scope have default values, so callers that don't pass a scope work as before.", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:47+09:00", "event": "decided", "decision": "I2-22", "predicted": "Added an item about scope to distill.md and renumbered the following items. Updated the distill result shape in ROLE_HELP and the README table. Added how scope is passed to the k2down section. Rewrot…", "actual": "Added an item about scope to distill.md and renumbered the following items. Updated the distill result shape in ROLE_HELP and the README table. Added how scope is passed to the k2down section. Rewrot…", "outcome": "hit"}
+{"ts": "2026-10-28T00:19:47+09:00", "event": "decided", "decision": "I2-23", "predicted": "When a proposal has a scope, its line shows [scope].", "actual": "When a proposal has a scope, its line shows [scope].", "outcome": "hit"}
+{"ts": "2026-10-28T00:20:00+09:00", "event": "proposed", "proposal": "P-9ydkc", "kind": "add", "rule": "仕組みを入れるかを測ってから決めるタスクでは、測って結果を載せるところで止める。入れるかはクライアントが決め、要るなら別のタスクで入れる", "decision": "I11-2"}
+{"ts": "2026-10-28T00:20:00+09:00", "event": "proposed", "proposal": "P-2c19q", "kind": "add", "rule": "測る数のうち、ログから機械的に出せるものは algr stats に項目を足して続けて見えるようにする。文の意味を読んで判断する数はコアで数えず、エージェントが一度だけ読み比べて docs/dogfooding.md の「分かったこと」に書く", "decision": "I11-5"}
+{"ts": "2026-10-28T00:20:22+09:00", "event": "proposed", "proposal": "P-jynmv", "kind": "add", "rule": "ルールに付く属性（適用範囲など）は蒸留の提案の時点で付け、メタプログラマーが accept で文と一緒に確かめる。accept のあとに別の手で付けない", "decision": "I2-11"}
+{"ts": "2026-10-28T00:20:23+09:00", "event": "proposed", "proposal": "P-8p3jq", "kind": "add", "rule": "記録の形（Task などの項目）を変えて広げる案と、変えずに済む最小の案があるときは、まず最小の案で入れ、足りないと記録から分かってから広げる", "decision": "I2-12"}
+{"ts": "2026-10-28T00:20:23+09:00", "event": "proposed", "proposal": "P-f7zd5", "kind": "add", "rule": "フェイクアダプタは本物のアダプタと同じ振る舞い（絞り込みなどの意味も含む）にし、その振る舞いをテストで確かめられるようにする", "decision": "I2-13"}
+{"ts": "2026-10-28T00:20:23+09:00", "event": "proposed", "proposal": "P-t76d6", "kind": "retire", "rule_id": "R017", "reason": "判断 105 件で一度も当たらない。k2down への要望が入るまでのつなぎのルールで、I2 では k2down 0.4.0 の --scope を使って判断ストアの側で持てたため、もう要らない"}
+{"ts": "2026-10-28T00:22:39+09:00", "event": "applied", "rule_id": "R007", "problem": "起票のジョブに渡すルールの範囲", "decision": "I15-1"}
+{"ts": "2026-10-28T00:22:39+09:00", "event": "applied", "rule_id": "R002", "problem": "起票のジョブに渡すルールの範囲", "decision": "I15-1"}
+{"ts": "2026-10-28T00:22:39+09:00", "event": "applied", "rule_id": "R007", "problem": "範囲の付いたルールが渡る先の説明", "decision": "I15-2"}
+{"ts": "2026-10-28T00:31:30+09:00", "event": "decided", "decision": "I15-1", "predicted": "_rules_for で蒸留と同じく起票（Role.INTAKE）にも全ルールを返す。レビューに引いたルールを足す仕組みとは分けたまま、分岐に役を 1 つ足すだけにする", "actual": "_rules_for で蒸留と同じく起票（Role.INTAKE）にも全ルールを返す。レビューに引いたルールを足す仕組みとは分けたまま、分岐に役を 1 つ足すだけにする", "outcome": "hit"}
+{"ts": "2026-10-28T00:31:30+09:00", "event": "decided", "decision": "I15-2", "predicted": "README のジョブの入力の説明、distill.md の scope の説明、docs/open-questions.md のルールの適用範囲を『起票と蒸留には全ルール』に直す", "actual": "README のジョブの入力の説明、distill.md の scope の説明、docs/open-questions.md のルールの適用範囲を『起票と蒸留には全ルール』に直す", "outcome": "hit"}
+{"ts": "2026-10-28T00:35:35+09:00", "event": "accepted", "proposal": "P-9ydkc"}
+{"ts": "2026-10-28T00:35:35+09:00", "event": "added", "rule_id": "R-ea0tz", "decision": "I11-2", "proposal": "P-9ydkc"}
+{"ts": "2026-10-28T00:35:35+09:00", "event": "accepted", "proposal": "P-2c19q"}
+{"ts": "2026-10-28T00:35:35+09:00", "event": "added", "rule_id": "R-pmtm9", "decision": "I11-5", "proposal": "P-2c19q"}
+{"ts": "2026-10-28T00:35:36+09:00", "event": "accepted", "proposal": "P-jynmv"}
+{"ts": "2026-10-28T00:35:36+09:00", "event": "added", "rule_id": "R-gp6nm", "decision": "I2-11", "proposal": "P-jynmv"}
+{"ts": "2026-10-28T00:35:36+09:00", "event": "accepted", "proposal": "P-8p3jq"}
+{"ts": "2026-10-28T00:35:36+09:00", "event": "added", "rule_id": "R-vv7gg", "decision": "I2-12", "proposal": "P-8p3jq"}
+{"ts": "2026-10-28T00:35:37+09:00", "event": "accepted", "proposal": "P-f7zd5"}
+{"ts": "2026-10-28T00:35:37+09:00", "event": "added", "rule_id": "R-nwj3b", "decision": "I2-13", "proposal": "P-f7zd5"}
+{"ts": "2026-10-28T00:35:37+09:00", "event": "accepted", "proposal": "P-t76d6"}
+{"ts": "2026-10-28T00:35:37+09:00", "event": "retired", "rule_id": "R017", "proposal": "P-t76d6"}
+{"ts": "2026-10-28T00:35:44+09:00", "event": "decided", "decision": "I16-1", "actual": "ルールはなるべく減らす。前のルールを広げたり補ったりしているルールは、抽象度の高い 1 本に言い直して、旧いルールを外す提案にする。言い直しで中身を落とさない。具体例は例として 1 本の中に残してよい", "outcome": "none"}
+{"ts": "2026-10-28T00:36:36+09:00", "event": "proposed", "proposal": "P-pcz83", "kind": "add", "rule": "記録の項目は種類ごとに分け、種類の違うものを 1 つの項目や辞書に混ぜない。ID は出どころ（ルール、人の答えなど）ごとに、値は種類（トークン数、回数など）ごとに別の項目にする", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:36+09:00", "event": "proposed", "proposal": "P-3v24j", "kind": "add", "rule": "既存の出力・イベント・アダプタ IF の戻り値の形は変えず、行・種類・項目を足すだけにする。足す項目には既定値を持たせ、その項目を返さない既存のアダプタでも壊れないようにする。足したら README の表も直す", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:36+09:00", "event": "proposed", "proposal": "P-xsvnf", "kind": "add", "rule": "実装の細部（UI の細部も含む）は、コンセプトに合い、複雑さを急に増やさず、軽く済むならエージェントが決める。UI は既存の見せ方に沿って決め、人が使ってみてその都度調整を依頼する。人に上げるのは、重大なトレードオフ、切り戻せない変更、IF の大きな変更のときだけ", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:36+09:00", "event": "proposed", "proposal": "P-synrq", "kind": "add", "rule": "設計はなるべくシンプルにし、最小の案から入れる。イベントや状態で表せるものに別のフラグや仕組みを足さない。記録の形（Task などの項目）を変えて広げる案と変えずに済む最小の案があるときは、まず最小の案で入れ、足りないと記録から分かってから広げる", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:36+09:00", "event": "proposed", "proposal": "P-zqkdh", "kind": "add", "rule": "仕組み・最適化・指標は、測って要ると分かってから入れる。性能やトークン消費の最適化は先に内訳を測って主な原因を確かめてから入れ、測って見つかった別の原因は別タスクに起票する。入れるかを測って決めるタスクでは結果を載せるところで止め、入れるかはクライアントが決める（要るなら別のタスクで入れる）。指標はまず内訳が見えるように出すところまでにし、単価のように値の更新が要る外部の数字を設定に持つ計算（費用の見積もりなど）は要ると分かってから別に入れる。ログから機械的に出せる数は algr stats に項目を足して続けて見えるようにし、文の意味を読んで判断する数はコアで数えず、エージェントが一度だけ読み比べて docs/dogfooding.md の「分かったこと」に書く", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-5dfb6", "kind": "add", "rule": "ルールの追加・外す・置き換え・属性（適用範囲など）の付与は、エージェントは蒸留の提案として出すだけにし、メタプログラマーが accept で文と一緒に確かめてはじめて反映する。accept のあとに別の手で属性を付けない", "decision": "I16-1"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-ckbz7", "kind": "retire", "rule_id": "R009", "decision": "I16-1", "reason": "R021 と合わせて、記録の項目を種類ごとに分ける 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-wb0jn", "kind": "retire", "rule_id": "R021", "decision": "I16-1", "reason": "R009 を値に広げたルールなので、R009 と合わせて 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-0sp8e", "kind": "retire", "rule_id": "R001", "decision": "I16-1", "reason": "R022 と合わせて、既存の形は変えず足すだけにする 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-dcs79", "kind": "retire", "rule_id": "R022", "decision": "I16-1", "reason": "R001 の「足すだけ」を補うルールなので、R001 と合わせて 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-c1w7z", "kind": "retire", "rule_id": "R006", "decision": "I16-1", "reason": "R007 の実装の細部の任せ方を UI に当てた補いなので、R007 と合わせて 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:37+09:00", "event": "proposed", "proposal": "P-0s7x4", "kind": "retire", "rule_id": "R007", "decision": "I16-1", "reason": "R006 と合わせて、実装の細部（UI を含む）を任せる 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-cvzg5", "kind": "retire", "rule_id": "R002", "decision": "I16-1", "reason": "R-vv7gg と合わせて、シンプルに最小の案から入れる 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-pwrxg", "kind": "retire", "rule_id": "R-vv7gg", "decision": "I16-1", "reason": "R002 のシンプルさを記録の形に当てた補いなので、R002 と合わせて 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-w2v8c", "kind": "retire", "rule_id": "R012", "decision": "I16-1", "reason": "R-ea0tz・R019・R-pmtm9 と合わせて、測ってから入れる 1 本に言い直す（判断 108 件で一度も当たっていない）"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-rzd8r", "kind": "retire", "rule_id": "R-ea0tz", "decision": "I16-1", "reason": "R012 の「測ってから入れる」を補うルールなので、1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-efwgr", "kind": "retire", "rule_id": "R019", "decision": "I16-1", "reason": "指標を要ると分かってから入れるルールで R012 と同じ趣旨なので、1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-thytn", "kind": "retire", "rule_id": "R-pmtm9", "decision": "I16-1", "reason": "測るときの数え方を補うルールなので、測ってから入れる 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:38+09:00", "event": "proposed", "proposal": "P-dq5kx", "kind": "retire", "rule_id": "R015", "decision": "I16-1", "reason": "R-gp6nm と合わせて、ルールの変更は提案と accept を通す 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:39+09:00", "event": "proposed", "proposal": "P-hjvjz", "kind": "retire", "rule_id": "R-gp6nm", "decision": "I16-1", "reason": "R015 の「accept を通す」を属性に広げたルールなので、R015 と合わせて 1 本に言い直す"}
+{"ts": "2026-10-28T00:36:39+09:00", "event": "proposed", "proposal": "P-7tmwn", "kind": "retire", "rule_id": "R010", "reason": "判断 108 件で一度も当たらない。未決事項の答えを前提として扱うことはプロンプトの動き方で既に決まっており、ルールとして要らない"}
+{"ts": "2026-10-28T00:38:28+09:00", "event": "declined", "proposal": "P-zqkdh"}
+{"ts": "2026-10-28T00:38:29+09:00", "event": "declined", "proposal": "P-w2v8c"}
+{"ts": "2026-10-28T00:38:30+09:00", "event": "declined", "proposal": "P-rzd8r"}
+{"ts": "2026-10-28T00:38:30+09:00", "event": "declined", "proposal": "P-efwgr"}
+{"ts": "2026-10-28T00:38:31+09:00", "event": "declined", "proposal": "P-thytn"}
+{"ts": "2026-10-28T00:38:37+09:00", "event": "accepted", "proposal": "P-pcz83"}
+{"ts": "2026-10-28T00:38:37+09:00", "event": "added", "rule_id": "R-d9vnc", "decision": "I16-1", "proposal": "P-pcz83"}
+{"ts": "2026-10-28T00:38:38+09:00", "event": "accepted", "proposal": "P-3v24j"}
+{"ts": "2026-10-28T00:38:38+09:00", "event": "added", "rule_id": "R-xe2we", "decision": "I16-1", "proposal": "P-3v24j"}
+{"ts": "2026-10-28T00:38:38+09:00", "event": "accepted", "proposal": "P-xsvnf"}
+{"ts": "2026-10-28T00:38:38+09:00", "event": "added", "rule_id": "R-50j1c", "decision": "I16-1", "proposal": "P-xsvnf"}
+{"ts": "2026-10-28T00:38:39+09:00", "event": "accepted", "proposal": "P-synrq"}
+{"ts": "2026-10-28T00:38:39+09:00", "event": "added", "rule_id": "R-y32dq", "decision": "I16-1", "proposal": "P-synrq"}
+{"ts": "2026-10-28T00:38:39+09:00", "event": "accepted", "proposal": "P-5dfb6"}
+{"ts": "2026-10-28T00:38:39+09:00", "event": "added", "rule_id": "R-tc1n1", "decision": "I16-1", "proposal": "P-5dfb6"}
+{"ts": "2026-10-28T00:38:40+09:00", "event": "accepted", "proposal": "P-ckbz7"}
+{"ts": "2026-10-28T00:38:40+09:00", "event": "retired", "rule_id": "R009", "proposal": "P-ckbz7"}
+{"ts": "2026-10-28T00:38:40+09:00", "event": "accepted", "proposal": "P-wb0jn"}
+{"ts": "2026-10-28T00:38:40+09:00", "event": "retired", "rule_id": "R021", "proposal": "P-wb0jn"}
+{"ts": "2026-10-28T00:38:41+09:00", "event": "accepted", "proposal": "P-0sp8e"}
+{"ts": "2026-10-28T00:38:41+09:00", "event": "retired", "rule_id": "R001", "proposal": "P-0sp8e"}
+{"ts": "2026-10-28T00:38:41+09:00", "event": "accepted", "proposal": "P-dcs79"}
+{"ts": "2026-10-28T00:38:41+09:00", "event": "retired", "rule_id": "R022", "proposal": "P-dcs79"}
+{"ts": "2026-10-28T00:38:42+09:00", "event": "accepted", "proposal": "P-c1w7z"}
+{"ts": "2026-10-28T00:38:42+09:00", "event": "retired", "rule_id": "R006", "proposal": "P-c1w7z"}
+{"ts": "2026-10-28T00:38:42+09:00", "event": "accepted", "proposal": "P-0s7x4"}
+{"ts": "2026-10-28T00:38:42+09:00", "event": "retired", "rule_id": "R007", "proposal": "P-0s7x4"}
+{"ts": "2026-10-28T00:38:43+09:00", "event": "accepted", "proposal": "P-cvzg5"}
+{"ts": "2026-10-28T00:38:43+09:00", "event": "retired", "rule_id": "R002", "proposal": "P-cvzg5"}
+{"ts": "2026-10-28T00:38:43+09:00", "event": "accepted", "proposal": "P-pwrxg"}
+{"ts": "2026-10-28T00:38:43+09:00", "event": "retired", "rule_id": "R-vv7gg", "proposal": "P-pwrxg"}
+{"ts": "2026-10-28T00:38:44+09:00", "event": "accepted", "proposal": "P-dq5kx"}
+{"ts": "2026-10-28T00:38:44+09:00", "event": "retired", "rule_id": "R015", "proposal": "P-dq5kx"}
+{"ts": "2026-10-28T00:38:44+09:00", "event": "accepted", "proposal": "P-hjvjz"}
+{"ts": "2026-10-28T00:38:44+09:00", "event": "retired", "rule_id": "R-gp6nm", "proposal": "P-hjvjz"}
+{"ts": "2026-10-28T00:38:45+09:00", "event": "accepted", "proposal": "P-7tmwn"}
+{"ts": "2026-10-28T00:38:45+09:00", "event": "retired", "rule_id": "R010", "proposal": "P-7tmwn"}
+{"ts": "2026-10-28T00:38:55+09:00", "event": "decided", "decision": "I17-1", "actual": "測るルール（R012・R019・R-ea0tz・R-pmtm9）を 1 本に言い直し、4 本を外す提案にする。前の言い直し（P-zqkdh）は 4 本の文をつないだだけで長すぎたので却下した。芯を 1 文（例：入れる前に測る。入れるかはクライアントが決める）で書き、細部は短い例を 1 つまでにする。あわせて、ルールのまとめ方（ルールはなるべく減らす。前のルールを広げたり補ったりしているルールは抽…", "outcome": "none"}
+{"ts": "2026-10-28T00:39:11+09:00", "event": "proposed", "proposal": "P-50sqx", "kind": "add", "rule": "仕組み・最適化・指標は、入れる前に測る。入れるかはクライアントが決める（例：最適化は内訳を測って主な原因を確かめてから入れる）", "decision": "I17-1"}
+{"ts": "2026-10-28T00:39:11+09:00", "event": "proposed", "proposal": "P-0385m", "kind": "add", "rule": "ルールはなるべく減らす。前のルールを広げたり補ったりするルールは、抽象度の高い 1 本に言い直して旧いルールを外す。言い直すときは文をつながず、芯を短く書く", "decision": "I17-1"}
+{"ts": "2026-10-28T00:39:11+09:00", "event": "proposed", "proposal": "P-r8jzk", "kind": "retire", "rule_id": "R012", "decision": "I17-1", "reason": "測ってから入れる 1 本に言い直す（判断 109 件で一度も当たらない）"}
+{"ts": "2026-10-28T00:39:12+09:00", "event": "proposed", "proposal": "P-018pr", "kind": "retire", "rule_id": "R019", "decision": "I17-1", "reason": "指標を要ると分かってから入れる趣旨で、測ってから入れる 1 本に言い直す"}
+{"ts": "2026-10-28T00:39:12+09:00", "event": "proposed", "proposal": "P-s62x5", "kind": "retire", "rule_id": "R-ea0tz", "decision": "I17-1", "reason": "R012 の測ってから入れるを補うルールなので、1 本に言い直す"}
+{"ts": "2026-10-28T00:39:12+09:00", "event": "proposed", "proposal": "P-rph9j", "kind": "retire", "rule_id": "R-pmtm9", "decision": "I17-1", "reason": "測るときの数え方を補う細部なので、測ってから入れる 1 本に言い直す"}
+{"ts": "2026-10-28T00:42:34+09:00", "event": "accepted", "proposal": "P-50sqx"}
+{"ts": "2026-10-28T00:42:34+09:00", "event": "added", "rule_id": "R-smj5s", "decision": "I17-1", "proposal": "P-50sqx"}
+{"ts": "2026-10-28T00:42:35+09:00", "event": "accepted", "proposal": "P-r8jzk"}
+{"ts": "2026-10-28T00:42:35+09:00", "event": "retired", "rule_id": "R012", "proposal": "P-r8jzk"}
+{"ts": "2026-10-28T00:42:35+09:00", "event": "accepted", "proposal": "P-018pr"}
+{"ts": "2026-10-28T00:42:35+09:00", "event": "retired", "rule_id": "R019", "proposal": "P-018pr"}
+{"ts": "2026-10-28T00:42:36+09:00", "event": "accepted", "proposal": "P-s62x5"}
+{"ts": "2026-10-28T00:42:36+09:00", "event": "retired", "rule_id": "R-ea0tz", "proposal": "P-s62x5"}
+{"ts": "2026-10-28T00:42:36+09:00", "event": "accepted", "proposal": "P-rph9j"}
+{"ts": "2026-10-28T00:42:36+09:00", "event": "retired", "rule_id": "R-pmtm9", "proposal": "P-rph9j"}
+{"ts": "2026-10-28T00:42:37+09:00", "event": "declined", "proposal": "P-0385m"}
+{"ts": "2026-10-28T00:43:12+09:00", "event": "decided", "decision": "I18-1", "actual": "ルールのまとめ方を、蒸留の範囲（scope: distill）のルールとして提案する。中身：ルールはなるべく減らす。前のルールを広げたり補ったりするルールは、抽象度の高い 1 本に言い直して旧いルールを外す。言い直すときは文をつながず、芯を短く書く。前の提案（P-0385m）は範囲が付いていなかったので却下した", "outcome": "none"}
+{"ts": "2026-10-28T00:43:26+09:00", "event": "proposed", "proposal": "P-v1bqj", "kind": "add", "rule": "ルールはなるべく減らす。前のルールを広げたり補ったりするときは、抽象度の高い 1 本に言い直して旧いルールを外す。言い直すときは文をつながず、芯を短く書く", "decision": "I18-1", "scopes": ["distill"]}
+{"ts": "2026-10-28T00:44:52+09:00", "event": "accepted", "proposal": "P-v1bqj"}
+{"ts": "2026-10-28T00:44:52+09:00", "event": "added", "rule_id": "R-ttbyz", "decision": "I18-1", "proposal": "P-v1bqj"}
+{"ts": "2026-10-28T00:45:35+09:00", "event": "escalated", "decision": "I19-1", "problem": "範囲の項目の形をどちらにそろえるか。k2down の proposals --json と list --json は範囲を `scopes`（配列。.algr/decisions/rules.json の R-ttbyz も `\"scopes\": [\"distill\"]`）で返す。一方 algr 側では、DecisionStore.proposals() の IF の docstring（ad…", "reason": "no_match"}
+{"ts": "2026-10-28T00:45:35+09:00", "event": "escalated", "decision": "I19-2", "problem": "ルールの範囲も表示するために、アダプタ IF の Rule（adapters/__init__.py。いまは id と text だけ）に範囲の項目を既定値付き（範囲なし）で足し、k2down.py の rules()（list --json の `scopes`）と fake.py の rules()（`scope`）から埋めて、`algr rules --json` の出力（cli.py の…", "reason": "no_match"}
+{"ts": "2026-10-28T11:10:06+09:00", "event": "decided", "decision": "I19-1", "actual": "(b) algr 側の IF・フェイクの rules.json・表示を k2down と同じ scopes（配列）にそろえる。理由：外部の値は同じ名前・同じ意味で持つ（R018）。1.0 までは手元で追従できる破壊的変更をしてよい（R008）ので、読み替えのために複数の範囲を文字列につなぐ規則を新しく作らない。distill の結果（rules[].scope）も scopes にそろえる", "outcome": "none"}
+{"ts": "2026-10-28T11:10:07+09:00", "event": "decided", "decision": "I19-2", "actual": "推奨案どおり、アダプタ IF の Rule に範囲の項目（scopes、既定は空の配列）を足し、k2down.py と fake.py の rules() から埋めて、algr rules --json と ui に出す。README の表も直す", "outcome": "none"}
+{"ts": "2026-10-28T11:22:56+09:00", "event": "applied", "rule_id": "R-50j1c", "problem": "k2down に複数の範囲を渡す方法", "decision": "I19-5"}
+{"ts": "2026-10-28T11:22:56+09:00", "event": "applied", "rule_id": "R-nwj3b", "problem": "範囲なしの提案の scopes", "decision": "I19-6"}
+{"ts": "2026-10-28T11:22:56+09:00", "event": "applied", "rule_id": "R-50j1c", "problem": "テキスト出力での範囲の見せ方", "decision": "I19-7"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-1", "problem": "消えたジョブを出し直す回数の上限をいくつにするか。設定で変えられるようにするか", "reason": "no_match"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-2", "problem": "出し直したことをどのイベントで残すか（新しいイベントを足すか、既存のジョブの記録に項目を足すか）。algr stats で消えた回数を数えられるようにするか", "reason": "no_match"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-3", "problem": "消えた回数をどこで数えるか：engine.py の _collect は status だけを見て判断する。R003 があるので events.jsonl から数えることはできず、タスクの状態に持つしかない。既にある例は model.py の Task.reworks で、flow.max_rework と組み、reopen（engine.py:229）で 0 に戻している。同じ形で Task …", "reason": "no_match"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-4", "problem": "どこまでを『消えた』として扱うか：fake.py の ProcessExecutor.status は、pid が無いときに RunState.FAILED と message=\"not started\" を返す。engine.py の _start_jobs は task.jobs を保存してから executor.start を呼ぶので、その間に落ちるとこの状態になる。これも実行場所の問題だ…", "reason": "no_match"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-5", "problem": "蒸留のジョブが消えたときの扱い：engine.py の _job_failed は、蒸留の失敗ではタスクを failed にせず通知だけする。ただ、_start_jobs は起動するときに task.to_distill を空にしているので、消えたまま出し直すと読ませるはずだったクライアントの答えが渡らない。蒸留も出し直すか、出し直すなら to_distill をどう戻すかが、意図からは決まらない", "reason": "no_match"}
+{"ts": "2026-10-28T11:34:40+09:00", "event": "escalated", "decision": "I20-6", "problem": "I20-2 を決めるための材料：engine.py の poll は、ジョブが終わるたびに events.jsonl へ {\"job\", \"task_id\", \"role\", \"state\": str(status.state)} を書いている。RunState に LOST を足せば、イベントを足さなくてもこの記録の state に \"lost\" が残る。stats.py はこの記録から数えら…", "reason": "no_match"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-1", "actual": "上限は 2 回。設定の flow.max_lost（既定 2）で変えられるようにする。理由：レビューの修正依頼の上限 max_rework（config.py の flow、既定 2）と同じ形にそろえる", "outcome": "none"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-2", "actual": "I20-6 の答えのとおり。新しいイベントは足さず、ジョブの終わりの記録の state=lost で残し、algr stats で役ごとに数える", "outcome": "none"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-3", "actual": "推奨案どおり。Task に lost: int = 0 を足し、役を問わずタスク全体で数え、reopen で 0 に戻す（reworks と同じ形）。理由：フローの判定はタスクの状態で行う（R003）", "outcome": "none"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-4", "actual": "推奨案どおり。not started も消えたとして返し、同じように出し直す。理由：task.jobs の保存と executor.start のあいだに落ちたのも実行場所の問題で、lost と区別する理由がない", "outcome": "none"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-5", "actual": "推奨案どおり。蒸留はいまのまま通知だけにして出し直さない。蒸留が失敗すると to_distill が起動のときに空になって答えが落ちる件は、消えたとき以外の失敗でも起きるもとからの穴なので、このタスクには入れず別のタスクで扱う", "outcome": "none"}
+{"ts": "2026-10-28T12:08:26+09:00", "event": "decided", "decision": "I20-6", "actual": "推奨案どおり。新しいイベントは足さず、ジョブの終わりの記録の state=lost で残す。algr stats はそこから役ごとに数える", "outcome": "none"}
+{"ts": "2026-10-28T12:09:33+09:00", "event": "escalated", "decision": "I21-1", "problem": "蒸留の出し直しを数える場所と上限：engine.py の _wanted は task.to_distill が残っていて DONE なら毎 tick 蒸留を出すので、to_distill を空にするのを _start_jobs（engine.py:404）から _job_done の DistillResult の枝へ移すだけでは、壊れた結果を返し続ける蒸留を際限なく出し直す。I20 の形（I…", "reason": "no_match"}
+{"ts": "2026-10-28T12:09:33+09:00", "event": "escalated", "decision": "I21-2", "problem": "上限を超えたときの扱い：蒸留はタスクが done になってから走るので（engine.py の _wanted）、ほかの役のように _fail でタスクを failed にできない（done から failed への遷移は無く、done のタスクを failed にするとマージ済みの依頼を通せなかったことになる）。いまの _job_failed は通知だけしている。上限を超えたら、答えを to_…", "reason": "no_match"}
+{"ts": "2026-10-28T12:10:38+09:00", "event": "decided", "decision": "I19-5", "predicted": "propose で範囲ごとに --scope を繰り返して渡す", "actual": "propose で範囲ごとに --scope を繰り返して渡す", "outcome": "hit"}
+{"ts": "2026-10-28T12:10:38+09:00", "event": "decided", "decision": "I19-6", "predicted": "フェイクも k2down アダプタも、範囲の無い足す提案には空の配列を返し、同じ形にそろえる", "actual": "フェイクも k2down アダプタも、範囲の無い足す提案には空の配列を返し、同じ形にそろえる", "outcome": "hit"}
+{"ts": "2026-10-28T12:10:38+09:00", "event": "decided", "decision": "I19-7", "predicted": "algr rules と algr proposals、ui では、文の後ろに [implement, review] のように範囲をつないで付け、範囲なしなら何も付けない", "actual": "algr rules と algr proposals、ui では、文の後ろに [implement, review] のように範囲をつないで付け、範囲なしなら何も付けない", "outcome": "hit"}
+{"ts": "2026-10-28T12:11:00+09:00", "event": "proposed", "proposal": "P-vz03d", "kind": "add", "rule": "出力・イベント・アダプタ IF の形を変えたり項目を足したりしたら、README の表も直す。足す項目には既定値を持たせる", "decision": "I19-1"}
+{"ts": "2026-10-28T12:11:00+09:00", "event": "proposed", "proposal": "P-mskfe", "kind": "retire", "rule_id": "R-xe2we", "decision": "I19-1", "reason": "I19-1 でアダプタ IF の戻り値とフェイクの保存の形を scopes（配列）に変えると決まり（R008 による）、「形は変えず足すだけにする」とぶつかる。既定値と README の部分だけを残して言い直す（判断 13 件で一度も当たっていない）"}
+{"ts": "2026-10-28T12:16:06+09:00", "event": "applied", "rule_id": "R-xe2we", "problem": "消えたことの返し方", "decision": "I20-9"}
+{"ts": "2026-10-28T12:16:07+09:00", "event": "applied", "rule_id": "R-y32dq", "problem": "消えたときのコアの動き", "decision": "I20-11"}
+{"ts": "2026-10-28T12:16:07+09:00", "event": "applied", "rule_id": "R003", "problem": "消えたときのコアの動き", "decision": "I20-11"}
+{"ts": "2026-10-28T12:16:07+09:00", "event": "applied", "rule_id": "R-50j1c", "problem": "作業ツリーとブランチの立て直し", "decision": "I20-14"}
+{"ts": "2026-10-28T12:16:07+09:00", "event": "applied", "rule_id": "R-nwj3b", "problem": "テスト", "decision": "I20-15"}
