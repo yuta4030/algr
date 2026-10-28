@@ -142,15 +142,19 @@ section > h2.big { font-size: 17px; color: var(--ink); letter-spacing: 0; font-w
 .shead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .shead h2 { margin: 0; } .shead .hint { margin-left: auto; font-size: 12px; }
 
-/* クライアント */
-.asks { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.ask { border: 1px solid var(--human-line); background: var(--human-soft); border-radius: 10px; padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
-.ask .top { display: flex; gap: 8px; align-items: baseline; }
-.ask .top .title { font-weight: 600; }
-.ask .q { font-size: 15px; }
-.opts { display: flex; flex-wrap: wrap; gap: 6px; }
-.opt { font-size: 13px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+/* クライアント。問いも選択肢も長い文なので、カードは横に並べず 1 件ずつ全幅に置き、ID は左の溝に出して本文の行を揃える */
+.asks { display: flex; flex-direction: column; gap: 12px; }
+.ask { border: 1px solid var(--human-line); background: var(--human-soft); border-radius: 10px; padding: 16px 18px; cursor: pointer; display: flex; flex-direction: column; gap: 14px; }
+.ask .top { display: flex; gap: 10px; align-items: baseline; }
+.ask .top .title { font-weight: 600; font-size: 15px; }
+.qblock { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 12px; }
+.qblock > .mono { font-size: 12px; padding-top: 2px; white-space: nowrap; }
+.qblock > div { display: flex; flex-direction: column; gap: 10px; max-width: 46em; }
+.ask .q { font-size: 14px; line-height: 1.75; }
+.opts { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.opt { font-size: 13px; line-height: 1.6; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
 .opt.rec { border-color: var(--human); background: var(--human); color: var(--human-ink); font-weight: 600; }
+.opt.rec::before { content: "推奨　"; font-size: 11px; opacity: .85; }
 .arrived { list-style: none; margin: 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
 .arrived li { display: flex; gap: 10px; cursor: pointer; }
 .arrived .t { color: var(--mute); width: 40px; flex: none; }
@@ -177,11 +181,16 @@ section.gate { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; b
 .pcard .text { font-size: 21px; font-weight: 600; line-height: 1.4; }
 .pcard .btn2 { margin-left: 0; }
 .pcard h4 { margin: 0; font-size: 12px; color: var(--mute); font-weight: 600; letter-spacing: .04em; }
-.ev { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; padding: 9px 12px; background: var(--bg); border-radius: 8px; font-size: 13px; }
+/* 根拠は問いと答えのどちらも長いので、横に並べず答えを問いの下に置く */
+.ev { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; padding: 10px 12px; background: var(--bg); border-radius: 8px; font-size: 13px; line-height: 1.7; }
+.ev > .mono { font-size: 12px; white-space: nowrap; }
+.ev > div { display: flex; flex-direction: column; gap: 4px; max-width: 46em; }
+.ev .a { font-weight: 600; }
 .kind { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 1px 8px; background: var(--add-bg); color: var(--add-ink); }
 .kind.retire { background: var(--drop-bg); color: var(--drop-ink); }
-.prest { display: grid; grid-template-columns: 52px 52px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; margin-bottom: 8px; cursor: pointer; }
-.mrule { display: grid; grid-template-columns: 44px minmax(0, 1fr) 110px; gap: 8px; align-items: center; padding: 5px 0; font-size: 13px; }
+.prest { display: grid; grid-template-columns: 64px 52px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; margin-bottom: 8px; cursor: pointer; }
+.mrule { display: grid; grid-template-columns: 64px minmax(0, 1fr) 110px; gap: 8px; align-items: center; padding: 5px 0; font-size: 13px; }
+.mrule > .mono, .prest > .mono { font-size: 12px; white-space: nowrap; }
 .mrule.unused { color: var(--mute); } .mrule .warn { color: var(--warn); }
 .mcand { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; }
 .mnums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; margin-bottom: 8px; }
@@ -280,7 +289,8 @@ main.page { display: block; }
   .row { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "id title age" ". steps who"; row-gap: 6px; }
   .row > .id { grid-area: id; } .row > .title { grid-area: title; } .row > .steps { grid-area: steps; } .row > .who { grid-area: who; } .row > .age { grid-area: age; }
   .row.head { display: none; }
-  .grid2, .mgrid { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .mgrid, .qblock, .ev { grid-template-columns: minmax(0, 1fr); }
+  .ask { padding: 14px; }
   .lede { display: none; }
   nav.mode a { padding: 0 10px; font-size: 13px; gap: 6px; }
   .jrow { grid-template-columns: 30px minmax(0, 1fr) 70px; }
@@ -462,8 +472,8 @@ function render() {
     return `<div class="ask" data-id="${t.id}">
       <div class="top"><span class="mono mute">${t.id}</span><span class="title">${esc(t.title)}</span></div>
       ${t.progress.failure ? `<div class="q">${ROLE[t.progress.failure.role] || esc(t.progress.failure.role)}で失敗：${esc(t.progress.failure.message)}</div>` : ""}
-      ${qs.map((q) => `<div class="q"><span class="mono mute">${q.id}</span>　${esc(q.text)}</div>
-        ${q.options.length || q.recommended ? `<div class="opts">${(q.options.length ? q.options : [q.recommended]).map((o) => `<span class="opt ${o === q.recommended ? "rec" : ""}">${esc(o)}${o === q.recommended ? "（推奨）" : ""}</span>`).join("")}</div>` : ""}`).join("")}
+      ${qs.map((q) => `<div class="qblock"><span class="mono mute">${q.id}</span><div><div class="q">${esc(q.text)}</div>
+        ${q.options.length || q.recommended ? `<div class="opts">${(q.options.length ? q.options : [q.recommended]).map((o) => `<span class="opt ${o === q.recommended ? "rec" : ""}">${esc(o)}</span>`).join("")}</div>` : ""}</div></div>`).join("")}
       ${t.actions.map((a) => `<div class="cli"><code class="mono">${esc(a.cli)}</code><button class="btn copy" data-cli="${esc(a.cli)}">copy</button></div>`).join("")}
     </div>`;
   }).join("")}</div>` : `<div class="clear"><span class="mark">✓</span>なし</div>`;
@@ -688,11 +698,11 @@ function renderMeta() {
 function proposalCard(p) {
   const e = p.evidence, cli = (c) => `<div class="cli"><code class="mono">algr ${c} ${p.id}</code><button class="btn copy" data-cli="algr ${c} ${p.id}">copy</button></div>`;
   const why = p.kind === "retire"
-    ? `<h4>根拠 — ${esc(p.reason)}</h4><div class="ev"><span class="mono mute">${p.rule_id}</span><span>${esc(e.rule?.text || "")}</span><b>使われた ${e.uses} 回</b></div>
-       ${e.report ? `<div class="ev"><span></span><span class="mute">report：当たり ${e.report.hit} · 外れ ${e.report.miss} · 異議 ${e.report.rejected}</span><span></span></div>` : ""}
+    ? `<h4>根拠 — ${esc(p.reason)}</h4><div class="ev"><span class="mono mute">${p.rule_id}</span><div><span>${esc(e.rule?.text || "")}</span>
+       <span class="a">使われた ${e.uses} 回${e.report ? `<span class="mute" style="font-weight:400"> · report：当たり ${e.report.hit} · 外れ ${e.report.miss} · 異議 ${e.report.rejected}</span>` : ""}</span></div></div>
        <div class="mute" style="font-size:13px">外すと、このルールは起票・実装・レビューに渡らなくなる。</div>`
     : `<h4>根拠 — ${e.topic ? `クライアントが「${esc(e.topic)}」に ${e.answers.length} 回答えた` : "人の答え"}</h4>
-       ${e.answers.map((a) => `<div class="ev"><span class="mono mute">${esc(a.id || "")}</span><span>${esc(a.text || "")}</span><b>${esc(a.answer ?? "")}</b></div>`).join("") || `<div class="mute">report の候補から</div>`}
+       ${e.answers.map((a) => `<div class="ev"><span class="mono mute">${esc(a.id || "")}</span><div><span class="mute">${esc(a.text || "")}</span><span class="a">${esc(a.answer ?? "")}</span></div></div>`).join("") || `<div class="mute">report の候補から</div>`}
        <div class="mute" style="font-size:13px">ルールにすると、この論点は起票で埋まり、クライアントには上がらなくなる。</div>`;
   return `<article class="pcard">
     <div class="shead" style="margin:0"><span class="kind ${p.kind}">${p.kind === "retire" ? "外す" : "足す"}</span><span class="mono mute">${p.id}</span>${p.job ? `<span class="mute" style="font-size:12px">${p.job} が出した</span>` : ""}</div>
