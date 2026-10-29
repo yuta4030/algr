@@ -10,9 +10,12 @@ algr 自身の開発を algr で回す。起票・実装・レビュー・蒸留
 | `.algr/adapters/branch.py` | マージのアダプタ。`algr/<ID>` が統合ブランチに入ったら merged を返す（マージはクライアントが手で行う） | 入れる |
 | `.algr/prompts/` | 実装とレビューのプロンプトへの追記（ブランチ、テスト、リンタ） | 入れる |
 | `.algr/decisions/` | ルール（`rules.json`）、まだ決まっていない提案（`proposals.json`）、判断の記録（`usage.jsonl`） | 入れる |
+| `.algr/log/` | `.algr/tasks/` と `.algr/state/events.jsonl` の写し。マージのたびに写して入れる（回し方の 6） | 入れる |
 | `.algr/tasks/`、`.algr/state/` | タスク、イベントの記録、ジョブの出力 | 入れない |
 
-ルールの追加や言い直しは PR の差分で見える。タスクと記録は残らないので、タスクの番号は環境を作るたびに I1 から振り直しになる。
+ルールの追加や言い直しは PR の差分で見える。タスクとイベントの記録は `.algr/log/` に写して残す。
+動いている `.algr/tasks/` と `.algr/state/` は、エージェントが同じ作業ツリーでブランチを切り替える間も watch が書き換えるので git に入れない（入れると checkout が止まり、タスクのブランチに記録が混ざる）。
+クラウドの環境は使い終わると消えるので、写しが無いと `algr stats` が溜まらず、タスクの番号も I1 から振り直しになって判断の記録（`I24-1` など）とぶつかる。
 
 ## 用意
 
@@ -22,6 +25,12 @@ claude.ai/code のクラウドでも手元でも動く。クラウドでは `cla
 uv tool install git+https://github.com/yuta4030/k2down
 # 動かす algr は作業ツリーと別に入れる。エージェントの書きかけのコードを watch が読まないように
 git worktree add --detach ../algr-tool origin/main && uv tool install --force ../algr-tool && git worktree remove --force ../algr-tool
+```
+
+新しい環境では、写しからタスクとイベントの記録を戻してから watch を始める。番号は続きから振られ、`algr stats` も前の分から数える。
+
+```sh
+mkdir -p .algr/tasks .algr/state && cp .algr/log/tasks/* .algr/tasks/ && cp .algr/log/events.jsonl .algr/state/
 ```
 
 マージした変更を watch に効かせるには、同じように入れ直して watch を再起動する。
@@ -34,6 +43,7 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 4. `intake.asked` / `implement.asked` / `review.asked` が出たら（まとめて拾うなら `algr list --state waiting`）、`algr show <ID>` で問いを見て答える（`algr answer`）。推奨案はそのまま受けず、コードを読んで確かめる（下の「分かったこと」）
 5. `review.approved` が出たらタスクは `merging` で待つ。`git diff HEAD...algr/<ID>` と、`git worktree` に出したテストで確かめる
 6. マージするなら `git merge --ff-only algr/<ID>`。次の tick でアダプタが見つけて done にする。`algr/<ID>` は done になってから消す（先に消すと closed として failed になる）。
+   記録を写してコミットする（`mkdir -p .algr/log/tasks && cp .algr/tasks/* .algr/log/tasks/ && cp .algr/state/events.jsonl .algr/log/ && git add .algr/log && git commit -m "記録を写す"`）。
    統合ブランチを push して PR にする。PR の説明には、クライアントの答えとエージェントの判断を載せる。PR への指摘は新しいタスクとして起票する
 7. 蒸留の提案（`algr proposals`）を受け入れるなら `algr accept`。文が曖昧なら `k2down --dir .algr/decisions replace` で言い直す。ルールの変更も同じ PR に入れる
 
@@ -42,7 +52,11 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 ## 次にやること
 
 1. レビューが人に聞かずに追認できる小さな判断の線を決める（UI の分は R006 で一部カバー）
-2. トークンを減らす。人が答えるたびに起票が走り直す（蒸留はタスクの done で 1 回にした）
+2. トークンを減らす。先に測れるようにする（どれも安全網とルールで決まる範囲。R018、R-d9vnc、R-y32dq、R-smj5s）
+   - 費用を記録する：`claude -p` の `total_cost_usd` をジョブの記録に残し、`tokens_by_role` を種類ごとに分ける（いまは 4 種類を足していて R-d9vnc に反する。キャッシュ読みは通常の入力より 1 桁安い）
+   - 断られたツールを記録する：`permission_denials` をジョブの記録に残し、断られたら回り道せずに聞く（回り道はターン数を増やす。権限は安全網）
+   - AC を書く：起票が確かめられる完了条件を `purpose` に書き、実装は AC ごとの根拠（テストの名前か手順）を PR に書き、レビューは根拠を見る（テストが根拠なら信頼し、申告だけなら確かめる）
+   - 自動リレー（置き手紙でセッションを切り替える）とやり直しの `--resume` は、ジョブごとの「キャッシュ読み ÷ ターン数」で文脈が伸びているかを測ってから決める
 3. 2 件目のレポート（[ローカル試行レポート](https://claude.ai/artifact/TzZmvKswAYqvPoysiQWuP8)の続き）
 
 ## 分かったこと（2026-10-24、最初の 2 件）
