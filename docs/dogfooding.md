@@ -10,9 +10,12 @@ algr 自身の開発を algr で回す。起票・実装・レビュー・蒸留
 | `.algr/adapters/branch.py` | マージのアダプタ。`algr/<ID>` が統合ブランチに入ったら merged を返す（マージはクライアントが手で行う） | 入れる |
 | `.algr/prompts/` | 実装とレビューのプロンプトへの追記（ブランチ、テスト、リンタ） | 入れる |
 | `.algr/decisions/` | ルール（`rules.json`）、まだ決まっていない提案（`proposals.json`）、判断の記録（`usage.jsonl`） | 入れる |
+| `.algr/log/` | `.algr/tasks/` と `.algr/state/events.jsonl` の写し。マージのたびに写して入れる（回し方の 6） | 入れる |
 | `.algr/tasks/`、`.algr/state/` | タスク、イベントの記録、ジョブの出力 | 入れない |
 
-ルールの追加や言い直しは PR の差分で見える。タスクと記録は残らないので、タスクの番号は環境を作るたびに I1 から振り直しになる。
+ルールの追加や言い直しは PR の差分で見える。タスクとイベントの記録は `.algr/log/` に写して残す。
+動いている `.algr/tasks/` と `.algr/state/` は、エージェントが同じ作業ツリーでブランチを切り替える間も watch が書き換えるので git に入れない（入れると checkout が止まり、タスクのブランチに記録が混ざる）。
+クラウドの環境は使い終わると消えるので、写しが無いと `algr stats` が溜まらず、タスクの番号も I1 から振り直しになって判断の記録（`I24-1` など）とぶつかる。
 
 ## 用意
 
@@ -22,6 +25,12 @@ claude.ai/code のクラウドでも手元でも動く。クラウドでは `cla
 uv tool install git+https://github.com/yuta4030/k2down
 # 動かす algr は作業ツリーと別に入れる。エージェントの書きかけのコードを watch が読まないように
 git worktree add --detach ../algr-tool origin/main && uv tool install --force ../algr-tool && git worktree remove --force ../algr-tool
+```
+
+新しい環境では、写しからタスクとイベントの記録を戻してから watch を始める。番号は続きから振られ、`algr stats` も前の分から数える。
+
+```sh
+mkdir -p .algr/tasks .algr/state && cp .algr/log/tasks/* .algr/tasks/ && cp .algr/log/events.jsonl .algr/state/
 ```
 
 マージした変更を watch に効かせるには、同じように入れ直して watch を再起動する。
@@ -34,6 +43,7 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 4. `intake.asked` / `implement.asked` / `review.asked` が出たら（まとめて拾うなら `algr list --state waiting`）、`algr show <ID>` で問いを見て答える（`algr answer`）。推奨案はそのまま受けず、コードを読んで確かめる（下の「分かったこと」）
 5. `review.approved` が出たらタスクは `merging` で待つ。`git diff HEAD...algr/<ID>` と、`git worktree` に出したテストで確かめる
 6. マージするなら `git merge --ff-only algr/<ID>`。次の tick でアダプタが見つけて done にする。`algr/<ID>` は done になってから消す（先に消すと closed として failed になる）。
+   記録を写してコミットする（`mkdir -p .algr/log/tasks && cp .algr/tasks/* .algr/log/tasks/ && cp .algr/state/events.jsonl .algr/log/ && git add .algr/log && git commit -m "記録を写す"`）。
    統合ブランチを push して PR にする。PR の説明には、クライアントの答えとエージェントの判断を載せる。PR への指摘は新しいタスクとして起票する
 7. 蒸留の提案（`algr proposals`）を受け入れるなら `algr accept`。文が曖昧なら `k2down --dir .algr/decisions replace` で言い直す。ルールの変更も同じ PR に入れる
 
@@ -42,8 +52,29 @@ git worktree add --detach ../algr-tool origin/main && uv tool install --force ..
 ## 次にやること
 
 1. レビューが人に聞かずに追認できる小さな判断の線を決める（UI の分は R006 で一部カバー）
-2. トークンを減らす。人が答えるたびに起票が走り直す（蒸留はタスクの done で 1 回にした）
+2. トークンを減らす。先に測れるようにする（どれも安全網とルールで決まる範囲。R018、R-d9vnc、R-y32dq、R-smj5s）。
+   起票の前に、開発環境のタスクの ID がほかの環境の記録とぶつからないようにする（新しい環境では I1 から振られ、`.algr/decisions/usage.jsonl` の `I1-1` などと重なる）。
+   起票のコマンドは下の「起票を待つタスク」。自動リレー（置き手紙でセッションを切り替える）とやり直しの `--resume` は、
+   費用の記録が溜まってから、ジョブごとの「キャッシュ読み ÷ ターン数」で文脈が伸びているかを見て決める
 3. 2 件目のレポート（[ローカル試行レポート](https://claude.ai/artifact/TzZmvKswAYqvPoysiQWuP8)の続き）
+
+## 起票を待つタスク
+
+トークンを減らす分（次にやることの 2）。2 件目は 1 件目と同じ `agent.py` と `stats.py` に触るので、起票したら `algr depends <2 件目> <1 件目>` を付ける（R020）。
+3 件目は、起票の聞いた回数が減ったか（I24-1）を測る 1 件目にもなる。AC はまだ仕組みが無いので、`purpose` に書く形で試す。
+
+1. 費用を記録する。いまの `tokens_by_role` は 4 種類のトークン数を同じ重みで足していて、通常の入力より 1 桁安いキャッシュ読みのせいで実際の費用より大きく見える（R-d9vnc にも反する）
+   ```sh
+   algr new "費用を記録する" --purpose "ジョブの費用を実態どおりに見る。AC：(1) claude -p の total_cost_usd がジョブの記録に同じ名前で残る (2) algr stats が役ごとのトークン数を種類別に出し、4 種類の合計は出さない (3) 費用の役ごとの合計が出る (4) README の表が直っている"
+   ```
+2. 断られたツールを記録して聞く。`-p` のエージェントは許可の無いツールを断られると黙って回り道をし、ターン数が増える。権限は安全網なので、決めずに聞く
+   ```sh
+   algr new "断られたツールを記録して聞く" --purpose "権限不足による回り道でターン数が増えるのを防ぐ。AC：(1) claude -p の permission_denials がジョブの記録に同じ名前で残る (2) algr stats が役ごとの断られた回数を出す (3) 共通のプロンプトに、断られたら回り道せず questions で聞くと書いてある (4) README の表が直っている"
+   ```
+3. AC を書いて根拠で確かめる。別の役の自己レビューは評価と同じ仕事になるので足さない。完了の条件を先に書き、実装は条件を満たすまで作り、レビューは根拠を見る（テストが根拠なら信頼し、申告だけなら確かめる）
+   ```sh
+   algr new "AC を書いて根拠で確かめる" --purpose "実装とレビューが同じ評価を二度するのを避ける。AC：(1) 起票のプロンプトが、確かめられる完了条件を purpose に箇条書きで書かせる (2) 実装のプロンプトが、AC ごとの根拠（テストの名前か手順）を PR に書かせる (3) レビューのプロンプトが、テストが根拠の AC は信頼し、申告だけの AC と根拠の中身を確かめる (4) Task の形は変えない"
+   ```
 
 ## 分かったこと（2026-10-24、最初の 2 件）
 
