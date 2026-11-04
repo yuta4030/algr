@@ -34,7 +34,7 @@ PR をレビュー・マージするチーム（PJ）は立場の外です。マ
 ## 使い方
 
 ```sh
-uv tool install git+https://github.com/yuta4030/algr
+uv tool install git+https://github.com/yuta4030/algr@v0.1.0   # 版はタグで固定する（版ごとの変更は CHANGELOG.md）
 cd your-repo
 algr init                                          # .algr/config.toml をフェイクアダプタで作る
 algr new "ログインを足す" -q "auth: どうサインインさせるか"
@@ -330,6 +330,13 @@ rules.json の差分は PR に載ります。
 ```sh
 uv run pytest -q
 ```
+
+## リリース
+
+1. `pyproject.toml` の `version` を上げる（`uv lock` で `uv.lock` も更新）
+2. `CHANGELOG.md` に `## [<版>] - <日付>` の節を書く（テストが、いまの版の節があるかを確かめる）
+3. PR をマージする。main の版にまだタグがなければ、CI（`.github/workflows/release.yml`）が `v<版>` のタグと GitHub Release を作る。Release の本文は CHANGELOG のその版の節
+4. README の「使い方」の版を新しいタグに直す
 
 ## ライセンス
 
