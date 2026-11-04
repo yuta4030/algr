@@ -9,7 +9,7 @@ SCRIPT = ROOT / "scripts" / "release_notes.py"
 
 
 def run(*args):
-    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8")
 
 
 def test_current_version_has_changelog_section():

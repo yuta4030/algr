@@ -26,6 +26,7 @@ def release_notes(version: str, changelog: str) -> str | None:
 
 
 def main(argv: list[str]) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # CHANGELOG は日本語。Windows の既定（cp1252 など）では書けない
     if argv == ["--version"]:
         print(project_version())
         return 0
